@@ -99,7 +99,23 @@ class Role {
         return rows;
     }
 
+    async update({ id, roleName }) {
+        const { rows } = await this.#DB.query(
+            `
+        UPDATE public.roles
+        SET name = $1, updated_on = now()
+        WHERE id = $2
+        RETURNING name
+      `,
+            [roleName, id]
+        );
+        return rows[0] ?? null;
+    }
 
+    async delete({ id }) {
+        await this.#DB.query(`DELETE FROM public.roles WHERE id = $1`, [id]);
+        return true;
+    }
 }
 
 const role = new Role();

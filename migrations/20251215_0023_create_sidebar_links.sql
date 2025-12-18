@@ -6,8 +6,13 @@ create table
         parent_id bigint,
         sort_order integer default 0,
         is_active boolean default true,
+        created_by uuid,
         created_on timestamptz default now (),
-        constraint fk_sidebar_parent foreign key (parent_id) references public.sidebar_links (id) on delete cascade
+        updated_by uuid,
+        updated_on timestamptz,
+        constraint fk_sidebar_parent foreign key (parent_id) references public.sidebar_links (id) on delete cascade,
+        constraint fk_created_by_user foreign key (created_by) references public.users (id) on delete set null,
+        constraint fk_updated_by_user foreign key (updated_by) references public.users (id) on delete set null
     );
 
-create index if not exists idx_sidebar_links_active on public.sidebar_links (is_active);    
+create index if not exists idx_sidebar_links_active on public.sidebar_links (is_active);

@@ -27,6 +27,29 @@ class Role {
             res.status(500).json({ error: "Failed to fetch roles" })
         }
     }
+
+    async updateRole(req, res) {
+        try {
+            const id = req.params.id
+            const { roleName } = req.body
+            await role.update({ id, roleName })
+            return res.json({ message: "Role updated successfully" })
+        } catch (error) {
+            console.log("🚀 ~ Role ~ updateRole ~ error:", error)
+            res.status(500).json({ error: "Failed to update role" })
+        }
+    }
+
+    async deleteRole(req, res) {
+        try {
+            const id = req.params.id
+            await role.delete({ id })
+            return res.json({ message: "Role deleted successfully" })
+        } catch (error) {
+            console.log("🚀 ~ Role ~ deleteRole ~ error:", error)
+            return res.status(500).json({message: "Failed to delete role"})
+        }
+    }
 }
 
 const roleController = new Role()
