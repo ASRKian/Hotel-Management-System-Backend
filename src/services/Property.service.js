@@ -69,20 +69,48 @@ class Property {
         const [dataRes, countRes] = await Promise.all([
             this.#DB.query(
                 `
-        SELECT *
-        FROM public.properties
-        ${whereClause}
-        ORDER BY id DESC
-        LIMIT $${idx} OFFSET $${idx + 1}
-      `,
+    SELECT
+      id,
+      brand_name,
+      address_line_1,
+      address_line_2,
+      city,
+      state,
+      postal_code,
+      country,
+      checkin_time,
+      checkout_time,
+      is_active,
+      admin_user_id,
+      created_by,
+      created_on,
+      updated_by,
+      updated_on,
+      room_tax_rate,
+      gst,
+      serial_number,
+      total_floors,
+      phone,
+      phone2,
+      email,
+      total_rooms,
+      year_opened,
+      is_pet_friendly,
+      smoking_policy,
+      cancellation_policy
+    FROM public.properties
+    ${whereClause}
+    ORDER BY id DESC
+    LIMIT $${idx} OFFSET $${idx + 1}
+    `,
                 [...values, limit, offset]
             ),
             this.#DB.query(
                 `
-        SELECT COUNT(*)::int AS total
-        FROM public.properties
-        ${whereClause}
-      `,
+    SELECT COUNT(*)::int AS total
+    FROM public.properties
+    ${whereClause}
+    `,
                 values
             )
         ]);
@@ -123,45 +151,47 @@ class Property {
             smoking_policy,
             cancellation_policy,
             image,
-            image_mime
+            image_mime,
+            admin_user_id
         } = payload;
 
         const { rows } = await this.#DB.query(
             `
-        INSERT INTO public.properties (
-          brand_name,
-          address_line_1,
-          address_line_2,
-          city,
-          state,
-          postal_code,
-          country,
-          checkin_time,
-          checkout_time,
-          is_active,
-          created_by,
-          room_tax_rate,
-          gst,
-          serial_number,
-          total_floors,
-          phone,
-          phone2,
-          email,
-          total_rooms,
-          year_opened,
-          is_pet_friendly,
-          smoking_policy,
-          cancellation_policy,
-          image,
-          image_mime
-        )
-        VALUES (
-          $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,
-          $11,$12,$13,$14,$15,$16,$17,$18,
-          $19,$20,$21,$22,$23,$24,$25
-        )
-        RETURNING *
-      `,
+    INSERT INTO public.properties (
+      brand_name,
+      address_line_1,
+      address_line_2,
+      city,
+      state,
+      postal_code,
+      country,
+      checkin_time,
+      checkout_time,
+      is_active,
+      created_by,
+      room_tax_rate,
+      gst,
+      serial_number,
+      total_floors,
+      phone,
+      phone2,
+      email,
+      total_rooms,
+      year_opened,
+      is_pet_friendly,
+      smoking_policy,
+      cancellation_policy,
+      image,
+      image_mime,
+      admin_user_id
+    )
+    VALUES (
+      $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,
+      $11,$12,$13,$14,$15,$16,$17,$18,
+      $19,$20,$21,$22,$23,$24,$25,$26
+    )
+    RETURNING id
+    `,
             [
                 brand_name,
                 address_line_1,
@@ -172,22 +202,23 @@ class Property {
                 country,
                 checkin_time,
                 checkout_time,
-                is_active,
+                is_active === "true" || is_active === true,
                 userId,
-                room_tax_rate,
-                gst,
+                Number(room_tax_rate || 0),
+                Number(gst || 0),
                 serial_number,
-                total_floors,
+                total_floors ? Number(total_floors) : null,
                 phone,
                 phone2,
                 email,
-                total_rooms,
-                year_opened,
-                is_pet_friendly,
+                total_rooms ? Number(total_rooms) : null,
+                year_opened ? Number(year_opened) : null,
+                is_pet_friendly === "true" || is_pet_friendly === true,
                 smoking_policy,
                 cancellation_policy,
                 image,
-                image_mime
+                image_mime,
+                admin_user_id
             ]
         );
 
@@ -218,12 +249,40 @@ class Property {
       UPDATE public.properties
       SET ${fields.join(", ")}
       WHERE id = $${idx}
-      RETURNING *
+      RETURNING id
     `,
             [...values, id]
         );
 
         return rows[0] ?? null;
+    }
+
+    async getImage({ id }) {
+        const { rows } = await this.#DB.query(
+            `SELECT image, image_mime FROM properties WHERE id = $1`,
+            [id]
+        )
+
+        if (!rows[0]?.image) return res.sendStatus(404)
+
+        return rows[0]
+    }
+
+    async getByAdminUserId(adminUserId) {
+        const { rows } = await this.#DB.query(
+            `
+      SELECT
+        id,
+        brand_name,
+        is_active
+      FROM public.properties
+      WHERE admin_user_id = $1
+      ORDER BY id DESC
+      `,
+            [adminUserId]
+        );
+
+        return rows;
     }
 
 }

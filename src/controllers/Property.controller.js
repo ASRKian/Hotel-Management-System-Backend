@@ -58,14 +58,19 @@ class Property {
   async create(req, res) {
     try {
       const userId = req.user?.user_id;
-
       if (!userId) {
         return res.status(401).json({ error: "Unauthorized" });
       }
 
+      const payload = {
+        ...req.body,
+        image: req.file?.buffer ?? null,
+        image_mime: req.file?.mimetype ?? null,
+      };
+
       const property = await propertyService.create({
-        payload: req.body,
-        userId
+        payload,
+        userId,
       });
 
       return res.status(201).json(property);
@@ -88,10 +93,18 @@ class Property {
         return res.status(401).json({ error: "Unauthorized" });
       }
 
+      const payload = {
+        ...req.body,
+      };
+      if (req.file) {
+        payload.image = req.file.buffer;
+        payload.image_mime = req.file.mimetype;
+      }
+
       const updated = await propertyService.update({
         id,
-        payload: req.body,
-        userId
+        payload,
+        userId,
       });
 
       if (!updated) {
@@ -104,6 +117,31 @@ class Property {
       return res.status(500).json({ error: "Failed to update property" });
     }
   }
+
+  async getImage(req, res) {
+    try {
+      const id = req.params.id
+      if (!id || id == "null") return res.send()
+      const { image, image_mime } = await propertyService.getImage({ id })
+      res.setHeader('Content-Type', image_mime)
+      return res.send(image)
+    } catch (error) {
+      console.log("🚀 ~ Property ~ getImage ~ error:", error)
+      return res.status(500).json({ error: "Failed to get image" });
+    }
+  }
+
+  async getByAdminUserId(req, res) {
+    try {
+      const id = req.user.user_id
+      const data = await propertyService.getByAdminUserId(id)
+      return res.json({ message: "Success", data })
+    } catch (error) {
+      console.log("🚀 ~ Property ~ getByAdminUserId ~ error:", error)
+      return res.status(500).json({ error: "Failed to get Properties" });
+    }
+  }
+
 }
 
 const property = new Property();

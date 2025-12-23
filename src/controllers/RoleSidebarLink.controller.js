@@ -4,8 +4,7 @@ import RoleSidebarLinkService from "../services/RoleSidebarLink.service.js"
 class RoleSidebarLink {
     async upsertPermission(req, res) {
         try {
-            const data = await RoleSidebarLinkService.upsertPermission(req.body)
-            console.log("🚀 ~ RoleSidebarLink ~ upsertPermission ~ data:", data)
+            await RoleSidebarLinkService.upsertPermission(req.body)
             return res.status(201).json({ message: "Success" })
         } catch (error) {
             console.log("🚀 ~ RoleSidebarLink ~ upsertPermission ~ error:", error)
@@ -17,7 +16,6 @@ class RoleSidebarLink {
         const role_id = req.params.id
         try {
             const permission = await RoleSidebarLinkService.getPermissionsByRole({ role_id })
-            console.log("🚀 ~ RoleSidebarLink ~ getPermissionsByRole ~ permission:", permission)
             return res.json({ message: "Success", permission })
         } catch (error) {
             console.log("🚀 ~ RoleSidebarLink ~ getPermissionByRole ~ error:", error)
@@ -40,8 +38,7 @@ class RoleSidebarLink {
         const role_id = req.params.id
         const sidebar_link_id = req.body.id
         try {
-            const data = await RoleSidebarLinkService.deletePermission({ role_id, sidebar_link_id })
-            console.log("🚀 ~ RoleSidebarLink ~ deletePermission ~ data:", data)
+            await RoleSidebarLinkService.deletePermission({ role_id, sidebar_link_id })
             return res.json({ message: "Success" })
         } catch (error) {
             console.log("🚀 ~ RoleSidebarLink ~ deletePermission ~ error:", error)

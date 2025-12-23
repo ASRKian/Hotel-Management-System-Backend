@@ -26,7 +26,7 @@ create table
         image_mime varchar(100),
         shift_pattern varchar(50),
         status varchar(50) default 'active',
-        user_id uuid,
+        user_id uuid not null,
         created_by uuid,
         created_on timestamptz default now (),
         updated_by uuid,
@@ -39,3 +39,5 @@ create table
             or leave_days >= 0
         )
     );
+
+create index if not exists idx_staff_user_id on public.staff (user_id);

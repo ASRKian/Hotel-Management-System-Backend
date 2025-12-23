@@ -47,8 +47,7 @@ class SidebarLink {
             const id = req.params.id
             const payload = req.body
             const userId = req.user.user_id
-            const data = await SidebarLinkService.update({ id, payload, userId })
-            console.log("🚀 ~ SidebarLink ~ updateLink ~ data:", data)
+            await SidebarLinkService.update({ id, payload, userId })
             return res.json({ message: "success" })
         } catch (error) {
             console.log("🚀 ~ SidebarLink ~ updateLink ~ error:", error)
@@ -59,8 +58,7 @@ class SidebarLink {
     async deleteLink(req, res) {
         try {
             const id = req.params.id
-            const data = await SidebarLinkService.delete({ id })
-            console.log("🚀 ~ SidebarLink ~ deleteLink ~ data:", data)
+            await SidebarLinkService.delete({ id })
             return res.json({ message: "Success" })
         } catch (error) {
             console.log("🚀 ~ SidebarLink ~ deleteLink ~ error:", error)

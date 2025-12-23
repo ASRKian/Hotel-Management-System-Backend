@@ -2,7 +2,7 @@ create extension if not exists "pgcrypto";
 
 create table
     if not exists public.properties (
-        id bigserial primary key, 
+        id bigserial primary key,
         brand_name varchar(150) not null,
         address_line_1 varchar(200) not null,
         address_line_2 varchar(200),
@@ -13,6 +13,7 @@ create table
         checkin_time time,
         checkout_time time,
         is_active boolean default true,
+        admin_user_id uuid null,
         created_by uuid,
         created_on timestamp
         with
