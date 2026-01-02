@@ -47,7 +47,18 @@ class Role {
             return res.json({ message: "Role deleted successfully" })
         } catch (error) {
             console.log("🚀 ~ Role ~ deleteRole ~ error:", error)
-            return res.status(500).json({message: "Failed to delete role"})
+            return res.status(500).json({ message: "Failed to delete role" })
+        }
+    }
+
+    async createUserRole(req, res) {
+        try {
+            const { userId, roleId } = req.body
+            await role.createUserRole({ userId, roleId })
+            return res.status(201).json({ message: "User role created successfully" })
+        } catch (error) {
+            console.log("🚀 ~ Role ~ createUserRole ~ error:", error)
+            return res.status(500).json({ message: "Failed to create user role" })
         }
     }
 }

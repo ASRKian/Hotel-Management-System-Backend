@@ -1,4 +1,5 @@
 import { getDb } from "../../utils/getDb.js";
+import { roles } from "../../utils/roles.js";
 
 class Property {
     #DB;
@@ -27,7 +28,8 @@ class Property {
         state,
         country,
         is_active,
-        search
+        search,
+        owner_user_id
     }) {
         const offset = (page - 1) * limit;
 
@@ -48,6 +50,11 @@ class Property {
         if (country) {
             where.push(`country = $${idx++}`);
             values.push(country);
+        }
+
+        if (owner_user_id) {
+            where.push(`owner_user_id = $${idx++}`);
+            values.push(owner_user_id);
         }
 
         if (typeof is_active === "boolean") {
@@ -81,7 +88,7 @@ class Property {
       checkin_time,
       checkout_time,
       is_active,
-      admin_user_id,
+      owner_user_id,
       created_by,
       created_on,
       updated_by,
@@ -126,7 +133,7 @@ class Property {
         };
     }
 
-    async create({ payload, userId }) {
+    async create({ payload, userId, ownerUserId }) {
         const {
             brand_name,
             address_line_1,
@@ -152,7 +159,6 @@ class Property {
             cancellation_policy,
             image,
             image_mime,
-            admin_user_id
         } = payload;
 
         const { rows } = await this.#DB.query(
@@ -183,7 +189,7 @@ class Property {
       cancellation_policy,
       image,
       image_mime,
-      admin_user_id
+      owner_user_id
     )
     VALUES (
       $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,
@@ -218,7 +224,7 @@ class Property {
                 cancellation_policy,
                 image,
                 image_mime,
-                admin_user_id
+                ownerUserId
             ]
         );
 
@@ -268,7 +274,7 @@ class Property {
         return rows[0]
     }
 
-    async getByAdminUserId(adminUserId) {
+    async getByOwnerUserId(ownerUserId) {
         const { rows } = await this.#DB.query(
             `
       SELECT
@@ -276,14 +282,145 @@ class Property {
         brand_name,
         is_active
       FROM public.properties
-      WHERE admin_user_id = $1
+      WHERE owner_user_id = $1
       ORDER BY id DESC
       `,
-            [adminUserId]
+            [ownerUserId]
         );
 
         return rows;
     }
+
+    async isOwnerOfProperty(propertyId, ownerUserId) {
+        if (!propertyId || !ownerUserId) return false;
+
+        const query = `
+    SELECT 1
+    FROM public.properties
+    WHERE id = $1
+      AND owner_user_id = $2
+    LIMIT 1
+  `;
+
+        const { rowCount } = await this.#DB.query(query, [
+            propertyId,
+            ownerUserId,
+        ]);
+
+        return rowCount === 1;
+    }
+
+    async isAdminOfProperty(propertyId, adminUserId) {
+        if (!propertyId || !userId) return false;
+
+        const query = `
+    SELECT 1
+    FROM public.property_admins
+    WHERE property_id = $1
+      AND user_id = $2
+    LIMIT 1
+  `;
+
+        const { rowCount } = await this.#DB.query(query, [
+            propertyId,
+            adminUserId,
+        ]);
+
+        return rowCount === 1;
+    }
+
+    async canAccessProperty(propertyId, userId, userRoles) {
+        const roleSet = new Set(userRoles);
+
+        if (roleSet.has(roles.SUPER_ADMIN)) {
+            return true;
+        }
+
+        if (roleSet.has(roles.OWNER)) {
+            return await this.isOwnerOfProperty(propertyId, userId);
+        }
+
+        if (roleSet.has(roles.ADMIN)) {
+            return await this.isAdminOfProperty(propertyId, userId);
+        }
+
+        return false;
+    }
+
+    async getAllProperties() {
+        const { rows } = await this.#DB.query(`
+    SELECT id, brand_name
+    FROM public.properties
+    ORDER BY brand_name
+  `);
+        return rows;
+    }
+
+    async getPropertiesByOwner(userId) {
+        const { rows } = await this.#DB.query(`
+    SELECT id, brand_name
+    FROM public.properties
+    WHERE owner_user_id = $1
+    ORDER BY brand_name
+  `, [userId]);
+        return rows;
+    }
+
+    async getPropertyByAdmin(userId) {
+        const { rows } = await this.#DB.query(`
+    SELECT p.id, p.brand_name
+    FROM public.properties p
+    JOIN public.property_admins pa
+      ON pa.property_id = p.id
+    WHERE pa.user_id = $1
+    LIMIT 1
+  `, [userId]);
+        return rows;
+    }
+
+    async getUserProperties(userId) {
+        const { rows } = await this.#DB.query(
+            `
+            SELECT
+            p.id::text AS id,
+            p.brand_name
+            FROM public.properties p
+            INNER JOIN public.users u
+            ON u.property_id = p.id
+            WHERE u.id = $1
+            ORDER BY p.brand_name
+            `,
+            [userId]
+        )
+
+        return rows
+    }
+
+    async getPropertyTaxConfig(propertyId) {
+        const { rows } = await this.#DB.query(
+            `
+            SELECT
+            room_tax_rate,
+            gst
+            FROM public.properties
+            WHERE id = $1
+            AND is_active = true
+            LIMIT 1
+            `,
+            [Number(propertyId)]
+        )
+
+        if (!rows.length) {
+            throw new Error("Property not found or inactive")
+        }
+
+        return {
+            room_tax_rate: Number(rows[0].room_tax_rate),
+            gst: Number(rows[0].gst),
+
+        }
+    }
+
 
 }
 

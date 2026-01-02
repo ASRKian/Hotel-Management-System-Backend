@@ -105,42 +105,93 @@ class Staff {
     async getById(id) {
         const { rows } = await this.#DB.query(
             `
-    SELECT
-      id,
-      first_name,
-      middle_name,
-      last_name,
-      address,
-      gender,
-      marital_status,
-      employment_type,
-      email,
-      phone1,
-      phone2,
-      emergency_contact,
-      id_proof_type,
-      id_number,
-      blood_group,
-      designation,
-      department,
-      hire_date,
-      leave_days,
-      dob,
-      shift_pattern,
-      status,
-      user_id,
-      created_by,
-      created_on,
-      updated_by,
-      updated_on
-    FROM public.staff
-    WHERE id = $1
-    `,
+        SELECT
+            s.id,
+            s.first_name,
+            s.middle_name,
+            s.last_name,
+            s.address,
+            s.gender,
+            s.marital_status,
+            s.employment_type,
+            s.email,
+            s.phone1,
+            s.phone2,
+            s.emergency_contact,
+            s.id_proof_type,
+            s.id_number,
+            s.blood_group,
+            s.designation,
+            s.department,
+            s.hire_date,
+            s.leave_days,
+            s.dob,
+            s.shift_pattern,
+            s.status,
+            s.user_id,
+            s.created_by,
+            s.created_on,
+            s.updated_by,
+            s.updated_on,
+            u.property_id,
+
+            -- 👇 roles as [{id, name}]
+            COALESCE(
+                jsonb_agg(
+                    DISTINCT jsonb_build_object(
+                        'id', r.id,
+                        'name', r.name
+                    )
+                ) FILTER (WHERE r.id IS NOT NULL),
+                '[]'::jsonb
+            ) AS roles
+
+        FROM public.staff s
+        LEFT JOIN public.users u
+            ON u.id = s.user_id
+        LEFT JOIN public.user_roles ur
+            ON ur.user_id = u.id
+        LEFT JOIN public.roles r
+            ON r.id = ur.role_id
+
+        WHERE s.id = $1
+
+        GROUP BY
+            s.id,
+            s.first_name,
+            s.middle_name,
+            s.last_name,
+            s.address,
+            s.gender,
+            s.marital_status,
+            s.employment_type,
+            s.email,
+            s.phone1,
+            s.phone2,
+            s.emergency_contact,
+            s.id_proof_type,
+            s.id_number,
+            s.blood_group,
+            s.designation,
+            s.department,
+            s.hire_date,
+            s.leave_days,
+            s.dob,
+            s.shift_pattern,
+            s.status,
+            s.user_id,
+            s.created_by,
+            s.created_on,
+            s.updated_by,
+            s.updated_on,
+            u.property_id
+        `,
             [id]
         );
 
         return rows[0];
     }
+
 
     async getStaffByPropertyId({
         property_id,
@@ -151,7 +202,7 @@ class Staff {
         status,
     }) {
 
-        const offset = (page - 1) * limit;
+        const offset = Math.max(0, (page - 1) * limit);
 
         const where = [`u.property_id = $1`];
         const values = [property_id];
@@ -227,7 +278,7 @@ class Staff {
         return {
             data: dataRes.rows,
             pagination: {
-                page,
+                page: Math.max(1, page),
                 limit,
                 total: countRes.rows[0].total,
                 totalPages: Math.ceil(countRes.rows[0].total / limit),
@@ -235,7 +286,7 @@ class Staff {
         };
     }
 
-    async create(payload, files, userId) {
+    async create({ payload, files, userId }) {
         const {
             first_name,
             middle_name,
@@ -337,43 +388,74 @@ class Staff {
         return rows[0];
     }
 
-    async update(id, payload, files, userId) {
-        const fields = [];
-        const values = [];
-        let idx = 1;
+    async update(id, payload, files, updated_by, client) {
+        const fields = []
+        const values = []
+        let idx = 1
 
-        for (const [key, value] of Object.entries(payload)) {
-            fields.push(`${key} = $${idx++}`);
-            values.push(value);
+        const STAFF_FIELDS = [
+            "first_name",
+            "middle_name",
+            "last_name",
+            "address",
+            "gender",
+            "marital_status",
+            "employment_type",
+            "email",
+            "phone1",
+            "phone2",
+            "emergency_contact",
+            "id_proof_type",
+            "id_number",
+            "blood_group",
+            "designation",
+            "department",
+            "hire_date",
+            "leave_days",
+            "dob",
+            "shift_pattern",
+            "status",
+            "user_id"
+        ]
+
+        for (const key of STAFF_FIELDS) {
+            if (payload[key] !== undefined) {
+                fields.push(`${key} = $${idx++}`)
+                values.push(payload[key])
+            }
         }
 
         if (files?.image) {
-            fields.push(`image = $${idx++}`);
-            values.push(files.image.buffer);
-            fields.push(`image_mime = $${idx++}`);
-            values.push(files.image.mimetype);
+            fields.push(`image = $${idx++}`)
+            values.push(files.image.buffer)
+
+            fields.push(`image_mime = $${idx++}`)
+            values.push(files.image.mimetype)
         }
 
         if (files?.id_proof) {
-            fields.push(`id_proof = $${idx++}`);
-            values.push(files.id_proof.buffer);
-            fields.push(`id_proof_mime = $${idx++}`);
-            values.push(files.id_proof.mimetype);
+            fields.push(`id_proof = $${idx++}`)
+            values.push(files.id_proof.buffer)
+
+            fields.push(`id_proof_mime = $${idx++}`)
+            values.push(files.id_proof.mimetype)
         }
 
-        fields.push(`updated_by = $${idx++}`);
-        values.push(userId);
+        fields.push(`updated_by = $${idx++}`)
+        values.push(updated_by)
 
-        fields.push(`updated_on = now()`);
+        fields.push(`updated_on = now()`)
 
-        await this.#DB.query(
+        if (!fields.length) return
+
+        await client.query(
             `
-    UPDATE public.staff
-    SET ${fields.join(", ")}
-    WHERE id = $${idx}
-    `,
+            UPDATE public.staff
+            SET ${fields.join(", ")}
+            WHERE id = $${idx}
+            `,
             [...values, id]
-        );
+        )
     }
 
     async getImage(id) {

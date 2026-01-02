@@ -8,6 +8,10 @@ create table
         is_active boolean default true,
         created_on timestamptz default now (),
         updated_on timestamptz,
+        created_by uuid,
+        updated_by uuid,
+        constraint fk_booking_created_by foreign key (created_by) references public.users (id) on delete set null,
+        constraint fk_booking_updated_by foreign key (updated_by) references public.users (id) on delete set null,
         constraint fk_packages_property foreign key (property_id) references public.properties (id) on delete cascade
     );
 

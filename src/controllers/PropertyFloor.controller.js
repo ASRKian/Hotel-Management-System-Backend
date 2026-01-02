@@ -1,4 +1,5 @@
 import propertyFloorService from "../services/PropertyFloor.service.js"
+import RoomService from "../services/Room.Service.js"
 
 class PropertyFloor {
     async getById(req, res) {
@@ -16,8 +17,10 @@ class PropertyFloor {
         try {
             const user_id = req.user.user_id
             const property_id = req.params.id
-            const floors = req.body
+            const { floors, prefix } = req.body
+
             await propertyFloorService.bulkUpsertFloors({ property_id, user_id, floors })
+            await RoomService.bulkCreateRooms({ propertyId: property_id, floors, prefix, createdBy: user_id })
             return res.status(201).json({ message: "Successfully inserted floors data" })
         } catch (error) {
             console.log("🚀 ~ PropertyFloor ~ bulkUpsert ~ error:", error)

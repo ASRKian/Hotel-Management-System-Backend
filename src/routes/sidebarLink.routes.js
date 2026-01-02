@@ -7,7 +7,7 @@ import sidebarLinkController from '../controllers/SidebarLink.controller.js'
 const router = express.Router()
 router.route("/")
     .post(supabaseAuth, requireRole(roles.SUPER_ADMIN), sidebarLinkController.createLink.bind(sidebarLinkController))
-    .get(supabaseAuth, requireRole(roles.SUPER_ADMIN), sidebarLinkController.getAllLinks.bind(sidebarLinkController))
+    .get(supabaseAuth, requireRole(roles.SUPER_ADMIN, roles.OWNER, roles.ADMIN), sidebarLinkController.getAllLinks.bind(sidebarLinkController))
 
 router.route("/:id")
     .get(supabaseAuth, requireRole(roles.SUPER_ADMIN), sidebarLinkController.getLinkById.bind(sidebarLinkController))

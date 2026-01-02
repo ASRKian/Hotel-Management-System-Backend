@@ -26,6 +26,32 @@ class Supabase {
             // app_metadata: {roles: role_ids}
         });
     }
+
+    async updateUser({ authUserId, email, password }) {
+        const updatePayload = {}
+
+        if (email) updatePayload.email = email
+        if (password) updatePayload.password = password
+
+        if (!Object.keys(updatePayload).length) return
+
+        const { data, error } =
+            await this.client().auth.admin.updateUserById(
+                authUserId,
+                updatePayload
+            )
+
+        if (error) throw error
+
+        return data
+    }
+
+
+    async deleteUser(userId) {
+        const { error } = await this.client().auth.admin.deleteUser(userId)
+
+        if (error) throw new Error(error.message)
+    }
 }
 
 const supabase = new Supabase()

@@ -28,7 +28,7 @@ import user from "../src/services/user.service.js";
     const roleName = roles.SUPER_ADMIN
     const roleId = await role.createRole({ roleName })
 
-    const userRes = await user.createUser({ authUserId, email, property_id: propertyId })
+    const userRes = await user.createUser({ authUserId, email, propertyId })
 
     const userId = userRes.id;
 

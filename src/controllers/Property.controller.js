@@ -38,6 +38,12 @@ class Property {
           ? req.query.is_active === "true"
           : undefined;
 
+      const isSuperAdmin = req.roles.includes("SUPER_ADMIN")
+      let owner_user_id
+      if (!isSuperAdmin) {
+        owner_user_id = req.user.user_id
+      }
+
       const result = await propertyService.getAll({
         page: Number(page),
         limit: Number(limit),
@@ -45,7 +51,8 @@ class Property {
         state,
         country,
         is_active,
-        search
+        search,
+        owner_user_id
       });
 
       return res.json(result);
@@ -58,6 +65,8 @@ class Property {
   async create(req, res) {
     try {
       const userId = req.user?.user_id;
+      let ownerUserId = req.params.id
+      ownerUserId ??= userId
       if (!userId) {
         return res.status(401).json({ error: "Unauthorized" });
       }
@@ -71,6 +80,7 @@ class Property {
       const property = await propertyService.create({
         payload,
         userId,
+        ownerUserId
       });
 
       return res.status(201).json(property);
@@ -131,16 +141,66 @@ class Property {
     }
   }
 
-  async getByAdminUserId(req, res) {
+  async getByOwnerUserId(req, res) {
     try {
-      const id = req.user.user_id
-      const data = await propertyService.getByAdminUserId(id)
+      let id = req.params.id
+      id ??= req.user.user_id
+      const data = await propertyService.getByOwnerUserId(id)
       return res.json({ message: "Success", data })
     } catch (error) {
       console.log("🚀 ~ Property ~ getByAdminUserId ~ error:", error)
       return res.status(500).json({ error: "Failed to get Properties" });
     }
   }
+
+  async getMyProperties(req, res) {
+    try {
+      const userId = req.user.user_id;
+      const roleSet = new Set(req.roles);
+
+      let properties = [];
+
+      if (roleSet.has("SUPER_ADMIN")) {
+        properties = await propertyService.getAllProperties();
+
+      } else if (roleSet.has("OWNER")) {
+        properties = await propertyService.getPropertiesByOwner(userId);
+
+      } else if (roleSet.has("ADMIN")) {
+        properties = await propertyService.getPropertyByAdmin(userId);
+
+      } else {
+        properties = await propertyService.getUserProperties(userId)
+      }
+
+      return res.json({
+        message: "Success",
+        properties,
+      });
+
+    } catch (error) {
+      console.error("getMyProperties error:", error);
+      return res.status(500).json({
+        message: "Failed to fetch properties",
+      });
+    }
+  }
+
+  async getPropertyTax(req, res) {
+    try {
+      const { property_id } = req.params
+
+      const result = await propertyService.getPropertyTaxConfig(property_id)
+
+      return res.status(200).json(result)
+    } catch (err) {
+      console.error("getPropertyTax:", err)
+      return res.status(404).json({
+        message: err.message || "Failed to fetch tax configuration"
+      })
+    }
+  }
+
 
 }
 

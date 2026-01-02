@@ -1,4 +1,7 @@
+import { roles } from "../../utils/roles.js";
+import propertyService from "../services/Property.service.js";
 import StaffService from "../services/Staff.service.js";
+import StaffOnboardingService from "../StaffOnboarding.service.js";
 
 class StaffController {
 
@@ -43,11 +46,20 @@ class StaffController {
 
     async getAllByPropertyId(req, res) {
         try {
-            const property_id = req.params.id;
-            if (isNaN(+property_id)) return res.status(404).send()
+            const propertyId = req.params.id;
+            if (isNaN(+propertyId)) return res.status(404).send()
+
+            const userId = req.user.user_id
+            const userRoles = req.roles
+
+            const allowed = await propertyService.canAccessProperty(propertyId, userId, userRoles)
+
+            if (!allowed) {
+                return res.status(403).json({ error: "You are not authorized to access this entity", });
+            }
 
             const staff = await StaffService.getStaffByPropertyId({
-                property_id,
+                property_id: propertyId,
                 page: req.query.page,
                 limit: req.query.limit,
                 search: req.query.search,
@@ -66,32 +78,50 @@ class StaffController {
 
     }
 
+    // async create(req, res) {
+    //     try {
+    //         const staff = await StaffService.create(
+    //             req.body,
+    //             req.files,
+    //             req.user.id
+    //         );
+
+    //         res.status(201).json({
+    //             message: "Staff created successfully",
+    //             data: staff,
+    //         });
+    //     } catch (err) {
+    //         console.log("🚀 ~ StaffController ~ create ~ err:", err)
+    //         return res.status(500).json({ message: "Error creating staff" })
+    //     }
+    // }
+
     async create(req, res) {
         try {
-            const staff = await StaffService.create(
-                req.body,
-                req.files,
-                req.user.id
-            );
+            const result = await StaffOnboardingService.createStaffWithUser({
+                payload: req.body,
+                files: req.files,
+                createdBy: req.user.user_id,
+            })
 
             res.status(201).json({
                 message: "Staff created successfully",
-                data: staff,
-            });
-        } catch (err) {
-            console.log("🚀 ~ StaffController ~ create ~ err:", err)
-            return res.status(500).json({ message: "Error creating staff" })
+                ...result,
+            })
+        } catch (error) {
+            console.log("🚀 ~ StaffController ~ create ~ error:", error)
+            return res.status(500).json({ message: "Some error occurred" })
         }
     }
 
+
     async update(req, res) {
         try {
-            await StaffService.update(
-                req.params.id,
-                req.body,
-                req.files,
-                req.user.id
-            );
+            const updatedBy = req.user.user_id
+            const payload = req.body
+            const files = req.files
+            const staffId = req.params.id
+            await StaffOnboardingService.updateStaffWithUser({ files, payload, staffId, updatedBy });
 
             res.json({
                 message: "Staff updated successfully",

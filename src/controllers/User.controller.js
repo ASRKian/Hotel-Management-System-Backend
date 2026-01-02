@@ -1,3 +1,5 @@
+import { roles } from "../../utils/roles.js";
+import propertyService from "../services/Property.service.js";
 import role from "../services/Role.service.js";
 import supabase from "../services/Supabase.service.js";
 import userService from "../services/user.service.js";
@@ -5,9 +7,10 @@ import userService from "../services/user.service.js";
 class User {
     async createUser(req, res) {
 
-        const { email, password, role_ids, property_id } = req.body;
+        const { email, password, role_ids, property_id, is_active } = req.body;
 
         try {
+            const requestUserId = req.user.user_id
             const { data, error } = await supabase.createUser({ email, password })
 
             if (error) {
@@ -16,7 +19,7 @@ class User {
 
             const authUserId = data.user.id;
 
-            const user = await userService.createUser({ authUserId, email, property_id })
+            const user = await userService.createUser({ authUserId, email, propertyId: property_id, created_by: requestUserId, is_active })
             const userId = user.id
 
             for (const roleId of role_ids) {
@@ -34,14 +37,106 @@ class User {
         }
     }
 
-    getMe(req, res) {
-        res.json({
-            user_id: req.user.user_id,
-            email: req.user.email,
-            roles: req.user.roles,
-            property_id: req.user.property_id
-        });
+    async getMe(req, res) {
+        try {
+            const userId = req.user.user_id
+            const user = await userService.getMe(userId)
+            return res.json({ message: "Success", user })
+        } catch (error) {
+            console.log("🚀 ~ User ~ getMe ~ error:", error)
+            return res.status(500).json({ message: "Something went wrong" })
+        }
     }
+
+    async getUsersByRole(req, res) {
+        try {
+            const id = req.params.id
+            const users = await userService.getUsersByRole(id)
+            return res.json({ message: "Success", users })
+        } catch (error) {
+            console.log("🚀 ~ User ~ getUsersByRoleId ~ error:", error)
+            return res.status(500).json({ message: "Error fetching users" })
+        }
+    }
+
+    async getUsersByPropertyAndRoles(req, res) {
+        try {
+            const userId = req.user.user_id;
+            const { propertyId, roles: rolesForFilter = [] } = req.body;
+
+            if (!propertyId || isNaN(+propertyId)) {
+                return res.status(400).json({ error: "Invalid property id" });
+            }
+
+            const roleSet = new Set(req.roles);
+
+            if (roleSet.has(roles.SUPER_ADMIN)) {
+                const users = await userService.getUsersByPropertyAndRoles({
+                    propertyId,
+                    isOwner: true,
+                    roles: rolesForFilter,
+                });
+
+                return res.json({ message: "Success", users });
+            }
+
+            if (roleSet.has(roles.OWNER)) {
+                const ownsProperty = await propertyService.isOwnerOfProperty(
+                    propertyId,
+                    userId
+                );
+
+                if (!ownsProperty) {
+                    return res.status(403).json({
+                        error: "You are not authorized to access this entity",
+                    });
+                }
+
+                const users = await userService.getUsersByPropertyAndRoles({
+                    propertyId,
+                    isOwner: true,
+                    roles: rolesForFilter,
+                });
+
+                return res.json({ message: "Success", users });
+            }
+
+            if (roleSet.has(roles.ADMIN)) {
+                const canAccess = await propertyService.isAdminOfProperty(
+                    propertyId,
+                    userId
+                );
+
+                if (!canAccess) {
+                    return res.status(403).json({
+                        error: "You are not authorized to access this entity",
+                    });
+                }
+
+                const users = await userService.getUsersByPropertyAndRoles({
+                    propertyId,
+                    isOwner: false,
+                    roles: rolesForFilter,
+                });
+
+                return res.json({ message: "Success", users });
+            }
+
+            return res.status(403).json({
+                error: "You are not authorized to access this entity",
+            });
+
+        } catch (error) {
+            console.error(
+                "🚀 UserController.getUsersByPropertyAndRoles error:",
+                error
+            );
+            return res.status(500).json({
+                message: "Error fetching users",
+            });
+        }
+    }
+
 }
 
 const user = new User();

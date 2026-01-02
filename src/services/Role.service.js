@@ -14,11 +14,12 @@ class Role {
     async createUserRole({ userId, roleId }) {
         await this.#DB.query(
             `
-        insert into user_roles (user_id, role_id)
+        insert into public.user_roles (user_id, role_id)
         values ($1, $2)
         `,
             [userId, roleId]
         );
+        return true
     }
 
     async createRole({ roleName }) {

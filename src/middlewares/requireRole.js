@@ -1,3 +1,4 @@
+import { roles } from "../../utils/roles.js";
 import role from "../services/Role.service.js";
 
 export function requireRole(...allowedRoles) {
@@ -8,7 +9,9 @@ export function requireRole(...allowedRoles) {
             return res.status(403).json({ error: "Roles not loaded" });
         }
 
-        const hasAccess = allowedRoles.some(role =>
+        req.roles = userRoles
+
+        const hasAccess = allowedRoles.includes(roles.ALL) || allowedRoles.some(role =>
             userRoles.includes(role)
         );
 

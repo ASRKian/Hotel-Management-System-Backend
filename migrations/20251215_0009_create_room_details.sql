@@ -23,7 +23,7 @@ create table
 create index if not exists idx_room_details_booking_id on public.room_details (booking_id);
 
 -- create index if not exists idx_room_details_room_no on public.room_details (room_no);
-
 create index if not exists idx_room_details_room_status on public.room_details (ref_room_id, room_status);
 
 -- create index if not exists idx_room_details_is_active on public.room_details (is_active);
+CREATE INDEX IF NOT EXISTS idx_room_booking_overlap ON public.room_details (ref_room_id) WHERE room_status IN ('BOOKED', 'CHECKED_IN');

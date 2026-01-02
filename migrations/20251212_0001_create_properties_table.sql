@@ -13,7 +13,7 @@ create table
         checkin_time time,
         checkout_time time,
         is_active boolean default true,
-        admin_user_id uuid null,
+        owner_user_id uuid null,
         created_by uuid,
         created_on timestamp
         with
@@ -45,3 +45,5 @@ create table
 create index if not exists idx_properties_city on public.properties (city);
 
 create index if not exists idx_properties_is_active on public.properties (is_active);
+
+create index if not exists idx_properties_owner on public.properties (owner_user_id);

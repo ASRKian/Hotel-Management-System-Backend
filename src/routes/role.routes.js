@@ -10,6 +10,9 @@ router.route("/")
     .post(supabaseAuth, requireRole(roles.SUPER_ADMIN), role.createRole.bind(role))
     .get(supabaseAuth, role.getAllRoles.bind(role))
 
+router.route("/user-roles")
+    .post(supabaseAuth, requireRole(roles.SUPER_ADMIN, roles.OWNER), role.createUserRole.bind(role))
+
 router.route("/:id")
     .patch(supabaseAuth, requireRole(roles.SUPER_ADMIN), role.updateRole.bind(role))
     .delete(supabaseAuth, requireRole(roles.SUPER_ADMIN), role.deleteRole.bind(role))
