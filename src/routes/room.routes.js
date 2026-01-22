@@ -7,15 +7,23 @@ import RoomController from '../controllers/Room.controller.js'
 const router = express.Router()
 
 router.route("/")
-    .get(supabaseAuth, requireRole(roles.SUPER_ADMIN, roles.OWNER, roles.ADMIN), RoomController.getRoomsByProperty.bind(RoomController))
-    .post(supabaseAuth, requireRole(roles.SUPER_ADMIN, roles.OWNER), RoomController.bulkCreateRooms.bind(RoomController))
-    .patch(supabaseAuth, requireRole(roles.SUPER_ADMIN, roles.OWNER), RoomController.bulkUpdateRooms.bind(RoomController))
+    .get(supabaseAuth, requireRole(roles.ALL), RoomController.getRoomsByProperty.bind(RoomController))
+    .post(supabaseAuth, requireRole(roles.ALL), RoomController.bulkCreateRooms.bind(RoomController))
+    .patch(supabaseAuth, requireRole(roles.ALL), RoomController.bulkUpdateRooms.bind(RoomController))
 
 router.route("/single-room")
-    .post(supabaseAuth, requireRole(roles.SUPER_ADMIN, roles.OWNER, roles.ADMIN), RoomController.addRoom.bind(RoomController))
+    .post(supabaseAuth, requireRole(roles.ALL), RoomController.addRoom.bind(RoomController))
 
 router.route("/available")
     .get(supabaseAuth, requireRole(roles.ALL), RoomController.getAvailableRooms.bind(RoomController))
+
 router.route("/check-availability")
     .get(supabaseAuth, requireRole(roles.ALL), RoomController.checkRoomAvailability.bind(RoomController))
+
+router.get("/room-types", RoomController.getAllRoomTypes.bind(RoomController))
+
+router.get("/status/property/:propertyId", supabaseAuth, requireRole(roles.ALL), RoomController.getDailyRoomStatus.bind(RoomController))
+
+router.patch("/booking/:bookingId/cancel", supabaseAuth, requireRole(roles.ALL), RoomController.cancelBookingRoom.bind(RoomController))
+
 export default router

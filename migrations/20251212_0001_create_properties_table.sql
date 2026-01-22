@@ -35,11 +35,11 @@ create table
             smoking_policy text,
             cancellation_policy text,
             image bytea,
-            image_mime varchar(100),
-            constraint chk_country_len check (
-                country is null
-                or length (country) = 2
-            )
+            image_mime varchar(100)
+            -- constraint chk_country_len check (
+            --     country is null
+            --     or length (country) = 2
+            -- )
     );
 
 create index if not exists idx_properties_city on public.properties (city);

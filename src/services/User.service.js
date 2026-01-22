@@ -112,46 +112,45 @@ class User {
     async getMe(userId) {
         const { rows } = await this.#DB.query(
             `
-            SELECT
-                u.id AS user_id,
-                u.email,
-                u.is_active,
-                u.created_on,
+        SELECT
+            u.id AS user_id,
+            u.email,
+            u.is_active,
+            u.created_on,
 
-                /* roles */
-                COALESCE(
-                    json_agg(
-                        DISTINCT jsonb_build_object(
-                            'id', r.id,
-                            'name', r.name
-                        )
-                    ) FILTER (WHERE r.id IS NOT NULL),
-                    '[]'
-                ) AS roles,
+            /* roles */
+            COALESCE(
+                json_agg(
+                    DISTINCT jsonb_build_object(
+                        'id', r.id,
+                        'name', r.name
+                    )
+                ) FILTER (WHERE r.id IS NOT NULL),
+                '[]'
+            ) AS roles,
 
-                /* staff profile (optional) */
-                jsonb_build_object(
-                    'staff_id', s.id,
-                    'first_name', s.first_name,
-                    'last_name', s.last_name,
-                    'designation', s.designation,
-                    'department', s.department
-                ) AS staff
+            /* staff profile (optional) */
+            jsonb_build_object(
+                'staff_id', s.id,
+                'first_name', s.first_name,
+                'last_name', s.last_name,
+                'designation', s.designation,
+                'department', s.department
+            ) AS staff
 
-            FROM public.users u
+        FROM public.users u
 
-            LEFT JOIN public.user_roles ur
-                ON ur.user_id = u.id
-            LEFT JOIN public.roles r
-                ON r.id = ur.role_id
+        LEFT JOIN public.user_roles ur
+            ON ur.user_id = u.id
+        LEFT JOIN public.roles r
+            ON r.id = ur.role_id
 
-            LEFT JOIN public.staff s
-                ON s.id::varchar = u.staff_id
+        LEFT JOIN public.staff s
+            ON s.user_id = u.id
 
-            WHERE u.id = $1
-            GROUP BY u.id, s.id;
-
-      `,
+        WHERE u.id = $1
+        GROUP BY u.id, s.id;
+        `,
             [userId]
         );
 
@@ -202,6 +201,35 @@ class User {
         return rows;
     }
 
+    async getUsersByPropertyAndRole({ property_id, role }) {
+        const { rows } = await this.#DB.query(
+            `
+        SELECT
+            u.id AS user_id,
+            s.first_name,
+            s.last_name,
+            u.email
+        FROM public.users u
+        JOIN public.user_roles ur
+            ON ur.user_id = u.id
+        JOIN public.roles r
+            ON r.id = ur.role_id
+        JOIN public.staff s
+            ON s.user_id = u.id
+        WHERE
+            u.property_id = $1
+            AND u.is_active = true
+            AND (
+                r.id::text = $2
+                OR LOWER(r.name) = LOWER($2)
+            )
+        ORDER BY s.id DESC
+        `,
+            [property_id, String(role)]
+        );
+
+        return rows;
+    }
 
 }
 

@@ -39,3 +39,11 @@ create table
     );
 
 create index if not exists idx_enquiries_property_status on public.enquiries (property_id, status);
+
+CREATE INDEX IF NOT EXISTS idx_enquiries_property_created ON public.enquiries (property_id, created_on DESC);
+
+CREATE INDEX IF NOT EXISTS idx_enquiries_follow_up ON public.enquiries (follow_up_date)
+WHERE
+    follow_up_date IS NOT NULL;
+
+CREATE INDEX IF NOT EXISTS idx_enquiries_property_active_created ON public.enquiries (property_id, is_active, created_on DESC);

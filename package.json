@@ -9,6 +9,7 @@
   "scripts": {
     "migrate": "node ./scripts/run-migrations.js",
     "create-super-admin": "node ./scripts/bootstrap-admin.js",
+    "seed": "node ./scripts/seed-master-data.js",
     "dev": "nodemon ./index.js"
   },
   "dependencies": {
@@ -17,6 +18,7 @@
     "dotenv": "^17.2.3",
     "express": "^5.2.1",
     "jsonwebtoken": "^9.0.3",
+    "jwks-rsa": "^3.2.0",
     "lru-cache": "^11.2.4",
     "multer": "^2.0.2",
     "pg": "^8.16.3"

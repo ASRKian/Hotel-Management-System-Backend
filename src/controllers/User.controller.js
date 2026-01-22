@@ -134,6 +134,24 @@ class User {
             return res.status(500).json({
                 message: "Error fetching users",
             });
+            return res.status(500).json({
+                message: "Error fetching users",
+            });
+        }
+    }
+
+    async getUsersByPropertyAndRole(req, res) {
+        try {
+            const propertyId = req.params.propertyId
+            const role = req.query.role
+            if (!role) {
+                return res.json({ message: "SUCCESS", users: [] })
+            }
+            const users = await userService.getUsersByPropertyAndRole({ property_id: propertyId, role })
+            return res.json({ message: "SUCCESS", users })
+        } catch (error) {
+            console.log("🚀 ~ User ~ getUsersByPropertyAndRole ~ error:", error)
+            return res.status(500).json({ message: "Error fetching users", });
         }
     }
 

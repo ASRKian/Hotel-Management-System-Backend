@@ -14,7 +14,7 @@ create table
         constraint fk_property foreign key (property_id) references public.properties (id) on delete cascade
     );
 
-CREATE UNIQUE INDEX uniq_admin_one_property ON public.property_admins (user_id);
+create unique index if not exists uniq_admin_one_property on public.property_admins (user_id);
 
 create unique index if not exists uniq_property_admin_pair on property_admins (property_id, user_id);
 

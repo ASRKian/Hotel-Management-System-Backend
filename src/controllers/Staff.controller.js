@@ -65,6 +65,7 @@ class StaffController {
                 search: req.query.search,
                 department: req.query.department,
                 status: req.query.status,
+                userRoles
             });
 
             return res.json({

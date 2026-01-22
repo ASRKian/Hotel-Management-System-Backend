@@ -1,3 +1,4 @@
+import packageService from "../services/package.service.js";
 import propertyService from "../services/Property.service.js";
 
 class Property {
@@ -71,10 +72,15 @@ class Property {
         return res.status(401).json({ error: "Unauthorized" });
       }
 
+      const imageFile = req.files?.image?.[0] ?? null;
+      const logoFile = req.files?.logo?.[0] ?? null;
+
       const payload = {
         ...req.body,
-        image: req.file?.buffer ?? null,
-        image_mime: req.file?.mimetype ?? null,
+        image: imageFile?.buffer ?? null,
+        image_mime: imageFile?.mimetype ?? null,
+        logo: logoFile?.buffer ?? null,
+        logo_mime: logoFile?.mimetype ?? null,
       };
 
       const property = await propertyService.create({
@@ -82,6 +88,9 @@ class Property {
         userId,
         ownerUserId
       });
+
+      const id = property.id
+      await packageService.generatePackagesForProperty(id, userId)
 
       return res.status(201).json(property);
     } catch (err) {
@@ -141,6 +150,19 @@ class Property {
     }
   }
 
+  async getLogo(req, res) {
+    try {
+      const id = req.params.id
+      if (!id || id == "null") return res.send()
+      const { logo, logo_mime } = await propertyService.getLogo({ id })
+      res.setHeader('Content-Type', logo_mime)
+      return res.send(logo)
+    } catch (error) {
+      console.log("🚀 ~ Property ~ getImage ~ error:", error)
+      return res.status(500).json({ error: "Failed to get image" });
+    }
+  }
+
   async getByOwnerUserId(req, res) {
     try {
       let id = req.params.id
@@ -188,9 +210,9 @@ class Property {
 
   async getPropertyTax(req, res) {
     try {
-      const { property_id } = req.params
+      const { id } = req.params
 
-      const result = await propertyService.getPropertyTaxConfig(property_id)
+      const result = await propertyService.getPropertyTaxConfig(id)
 
       return res.status(200).json(result)
     } catch (err) {
@@ -198,6 +220,23 @@ class Property {
       return res.status(404).json({
         message: err.message || "Failed to fetch tax configuration"
       })
+    }
+  }
+
+  async getPropertyAddress(req, res) {
+    try {
+      const userId = req.user.user_id
+
+      const address = await propertyService.getPropertyAddressById(userId);
+
+      if (!address) {
+        return res.status(404).json({ error: "Property not found" });
+      }
+
+      return res.json(address);
+    } catch (err) {
+      console.error("getPropertyAddress:", err);
+      return res.status(500).json({ error: "Failed to fetch property address" });
     }
   }
 

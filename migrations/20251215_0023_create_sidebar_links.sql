@@ -16,3 +16,5 @@ create table
     );
 
 create index if not exists idx_sidebar_links_active on public.sidebar_links (is_active);
+
+CREATE UNIQUE INDEX IF NOT EXISTS ux_sidebar_links_endpoint_ci ON public.sidebar_links (LOWER(endpoint));

@@ -10,7 +10,7 @@ class RoomService {
 
     async bulkCreateRooms({
         propertyId,
-        floors,          // [{ floor_number, rooms }]
+        floors,          // [{ floor_number, rooms_count }]
         prefix = "",
         roomSerialNumber = 101,
         createdBy,
@@ -19,6 +19,32 @@ class RoomService {
             return [];
         }
 
+        /**
+         * 1. Get room_type_id (STANDARD / Double Bed / AC)
+         */
+        const roomTypeRateQuery = `
+        SELECT id
+        FROM public.room_type_rates
+        WHERE property_id = $1
+          AND room_category_name = 'Standard'
+          AND bed_type_name = 'Double Bed'
+          AND ac_type_name = 'AC'
+        LIMIT 1
+    `;
+
+        const roomTypeRes = await this.#DB.query(roomTypeRateQuery, [propertyId]);
+
+        if (roomTypeRes.rowCount === 0) {
+            throw new Error(
+                "Room type rate not found for Standard / Double Bed / AC"
+            );
+        }
+
+        const roomTypeId = roomTypeRes.rows[0].id;
+
+        /**
+         * 2. Bulk insert rooms
+         */
         const values = [];
         const bindings = [];
         let i = 1;
@@ -34,20 +60,22 @@ class RoomService {
                 const roomNo = `${prefix}${roomNoNumber}`;
 
                 values.push(`(
-                            $${i++},  -- room_no
-                            $${i++},  -- room_type
-                            $${i++},  -- property_id
-                            $${i++},  -- floor_number
-                            true,
-                            $${i++},  -- created_by
-                            now(),
-                            $${i++},  -- updated_by
-                            now()
-                        )`);
+                $${i++},  -- room_no
+                $${i++},  -- room_type (STRING)
+                $${i++},  -- room_type_id (FK)
+                $${i++},  -- property_id
+                $${i++},  -- floor_number
+                true,
+                $${i++},  -- created_by
+                now(),
+                $${i++},  -- updated_by
+                now()
+            )`);
 
                 bindings.push(
                     roomNo,
                     "STANDARD",
+                    roomTypeId,
                     propertyId,
                     floorNumber,
                     createdBy,
@@ -60,6 +88,7 @@ class RoomService {
         INSERT INTO public.ref_rooms (
             room_no,
             room_type,
+            room_type_id,
             property_id,
             floor_number,
             is_active,
@@ -125,7 +154,7 @@ class RoomService {
 
             const { rows: existingRooms } = await client.query(
                 `
-            SELECT id, property_id, floor_number, is_active
+            SELECT id, property_id, floor_number, is_active, room_type_id
             FROM public.ref_rooms
             WHERE id = ANY($1)
             FOR UPDATE
@@ -133,30 +162,46 @@ class RoomService {
                 [ids]
             );
 
-            const roomMap = new Map();
-            for (const r of existingRooms) {
-                roomMap.set(r.id, r);
-            }
+            const roomMap = new Map(existingRooms.map(r => [r.id, r]));
 
-            const roomNoCases = [];
             const roomTypeCases = [];
             const activeCases = [];
             const bindings = [];
-
             let i = 1;
 
             for (const u of updates) {
-                roomNoCases.push(`WHEN id = $${i} THEN $${i + 1}`);
-                bindings.push(u.id, u.room_no);
-                i += 2;
+                if (u.room_type_id !== undefined) {
+                    roomTypeCases.push(`WHEN id = $${i} THEN $${i + 1}`);
+                    bindings.push(u.id, u.room_type_id);
+                    i += 2;
+                }
 
-                roomTypeCases.push(`WHEN id = $${i} THEN $${i + 1}`);
-                bindings.push(u.id, u.room_type);
-                i += 2;
+                if (u.is_active !== undefined) {
+                    activeCases.push(`WHEN id = $${i} THEN $${i + 1}`);
+                    bindings.push(u.id, u.is_active);
+                    i += 2;
+                }
+            }
 
-                activeCases.push(`WHEN id = $${i} THEN $${i + 1}`);
-                bindings.push(u.id, u.is_active);
-                i += 2;
+            // 🔑 Build SET clauses safely
+            const setClauses = [];
+
+            if (roomTypeCases.length) {
+                setClauses.push(`
+                room_type_id = CASE
+                    ${roomTypeCases.join(" ")}
+                    ELSE room_type_id
+                END
+            `);
+            }
+
+            if (activeCases.length) {
+                setClauses.push(`
+                is_active = CASE
+                    ${activeCases.join(" ")}
+                    ELSE is_active
+                END
+            `);
             }
 
             bindings.push(updatedBy);
@@ -165,18 +210,17 @@ class RoomService {
             const updateQuery = `
             UPDATE public.ref_rooms
             SET
-                room_no = CASE ${roomNoCases.join(" ")} ELSE room_no END,
-                room_type = CASE ${roomTypeCases.join(" ")} ELSE room_type END,
-                is_active = CASE ${activeCases.join(" ")} ELSE is_active END,
+                ${setClauses.join(",")},
                 updated_by = $${i},
-                updated_on = now()
+                updated_on = NOW()
             WHERE id = ANY($${i + 1})
-            RETURNING id, property_id, floor_number, is_active
+            RETURNING id, property_id, floor_number, is_active, room_type_id
         `;
 
             const { rows: updatedRooms } =
                 await client.query(updateQuery, bindings);
 
+            /* -------- FLOOR COUNTS (unchanged) -------- */
             const floorDelta = new Map();
 
             for (const updated of updatedRooms) {
@@ -205,19 +249,15 @@ class RoomService {
                 SET
                     rooms_count = GREATEST(rooms_count + $3, 0),
                     updated_by = $4,
-                    updated_at = now()
+                    updated_at = NOW()
                 WHERE property_id = $1
                   AND floor_number = $2
                 `,
-                    [
-                        Number(propertyId),
-                        Number(floorNumber),
-                        delta,
-                        updatedBy,
-                    ]
+                    [Number(propertyId), Number(floorNumber), delta, updatedBy]
                 );
             }
 
+            /* -------- PROPERTY COUNTS (unchanged) -------- */
             const propertyDelta = new Map();
 
             for (const updated of updatedRooms) {
@@ -244,13 +284,13 @@ class RoomService {
 
                 await client.query(
                     `
-                    UPDATE public.properties
-                    SET
-                        total_rooms = GREATEST(COALESCE(total_rooms, 0) + $2, 0),
-                        updated_by = $3,
-                        updated_on = now()
-                    WHERE id = $1
-                    `,
+                UPDATE public.properties
+                SET
+                    total_rooms = GREATEST(COALESCE(total_rooms, 0) + $2, 0),
+                    updated_by = $3,
+                    updated_on = NOW()
+                WHERE id = $1
+                `,
                     [propertyId, delta, updatedBy]
                 );
             }
@@ -269,7 +309,7 @@ class RoomService {
     async addRoom({
         propertyId,
         floorNumber,
-        roomType = "STANDARD",
+        roomTypeId,
         createdBy,
     }) {
         const client = await this.#DB.connect();
@@ -379,19 +419,20 @@ class RoomService {
                 `
                 INSERT INTO public.ref_rooms (
                     room_no,
-                    room_type,
+                    room_type_id,
                     property_id,
                     floor_number,
                     is_active,
                     created_by,
                     created_on,
                     updated_by,
-                    updated_on
+                    updated_on,
+                    room_type
                 )
-                VALUES ($1, $2, $3, $4, true, $5, now(), $5, now())
+                VALUES ($1, $2, $3, $4, true, $5, now(), $5, now(), $6)
                 RETURNING id, room_no, floor_number
                 `,
-                [finalRoomNo, roomType, propertyId, floorNumber, createdBy]
+                [finalRoomNo, roomTypeId, propertyId, floorNumber, createdBy, "STANDARD"]
             );
 
             await client.query(
@@ -511,7 +552,7 @@ class RoomService {
         propertyId,
         arrivalDate,
         departureDate,
-        roomType,
+        roomTypeId, // optional filter
         limit = 50,
         offset = 0,
     }) {
@@ -519,46 +560,70 @@ class RoomService {
             propertyId,
             arrivalDate,
             departureDate,
-        ]
+        ];
 
-        let roomTypeFilter = ""
-        if (roomType) {
-            params.push(roomType)
-            roomTypeFilter = `AND r.room_type = $${params.length}`
+        let roomTypeFilter = "";
+        if (roomTypeId) {
+            params.push(roomTypeId);
+            roomTypeFilter = `AND r.room_type_id = $${params.length}`;
         }
 
-        params.push(limit, offset)
+        params.push(limit, offset);
 
         const { rows } = await this.#DB.query(
             `
             SELECT
-            r.id,
-            r.room_no,
-            r.room_type,
-            r.floor_number
+                r.id,
+                r.room_no,
+                r.floor_number,
+
+                -- room type breakdown
+                rtr.room_category_name,
+                rtr.bed_type_name,
+                rtr.ac_type_name,
+                rtr.base_price
+
             FROM public.ref_rooms r
+            JOIN public.room_type_rates rtr
+                ON rtr.id = r.room_type_id
+            AND rtr.property_id = r.property_id
+
             WHERE r.property_id = $1
+            AND r.is_active = true
             ${roomTypeFilter}
+
             AND NOT EXISTS (
                 SELECT 1
                 FROM public.room_details rd
                 JOIN public.bookings b
                 ON b.id = rd.booking_id
+
                 WHERE rd.ref_room_id = r.id
-                AND b.booking_status IN ('RESERVED','CONFIRMED','CHECKED_IN')
+                AND rd.is_cancelled = false
+
+                AND b.booking_status IN (
+                        'CONFIRMED',
+                        'CHECKED_IN',
+                        'NO_SHOW'
+                )
+
                 AND (
-                    b.estimated_arrival < $3
-                    AND b.estimated_departure > $2
+                        b.estimated_arrival < $3
+                    AND COALESCE(
+                            b.actual_departure,
+                            b.estimated_departure
+                        ) > $2
                 )
             )
-            ORDER BY r.room_type, r.room_no
+
+            ORDER BY rtr.base_price, r.room_no
             LIMIT $${params.length - 1}
             OFFSET $${params.length}
             `,
             params
-        )
+        );
 
-        return rows
+        return rows;
     }
 
     async checkRoomAvailability({
@@ -586,6 +651,232 @@ class RoomService {
         return rowCount === 0
     }
 
+    async getAllRoomTypes() {
+        const [categories, bedTypes, acTypes] = await Promise.all([
+            this.#DB.query(`SELECT * FROM room_categories ORDER BY name`),
+            this.#DB.query(`SELECT * FROM bed_types ORDER BY name`),
+            this.#DB.query(`SELECT * FROM ac_types ORDER BY name`)
+        ]);
+
+        return {
+            room_categories: categories.rows,
+            bed_types: bedTypes.rows,
+            ac_types: acTypes.rows
+        };
+    }
+
+    async getDailyRoomStatus({
+        propertyId,
+        date = null, // defaults to today
+    }) {
+        const params = [propertyId, date];
+
+        const query = `
+        WITH target_day AS (
+            SELECT COALESCE($2::date, CURRENT_DATE) AS day
+        ),
+
+        room_status AS (
+            SELECT DISTINCT ON (r.id)
+                r.id AS ref_room_id,
+                r.room_no,
+                r.floor_number,
+                r.dirty,
+
+                b.booking_status,
+                b.pickup,
+                b.drop,
+
+                CASE
+                    WHEN b.booking_status IN ('CONFIRMED', 'CHECKED_IN', 'NO_SHOW')
+                         AND b.estimated_arrival::date <= td.day
+                         AND COALESCE(b.actual_departure::date, b.estimated_departure::date) > td.day
+                        THEN b.booking_status
+
+                    WHEN b.booking_status = 'CHECKED_OUT'
+                        THEN CASE
+                            WHEN r.dirty = true THEN 'DIRTY'
+                            ELSE 'FREE'
+                        END
+
+                    ELSE 'FREE'
+                END AS status
+
+            FROM public.ref_rooms r
+            CROSS JOIN target_day td
+
+            LEFT JOIN public.room_details rd
+                ON rd.ref_room_id = r.id
+                AND rd.is_cancelled = false
+
+            LEFT JOIN public.bookings b
+                ON b.id = rd.booking_id
+                AND b.booking_status IN (
+                    'CONFIRMED',
+                    'CHECKED_IN',
+                    'CHECKED_OUT',
+                    'NO_SHOW'
+                )
+                AND b.estimated_arrival::date <= td.day
+                AND COALESCE(b.actual_departure::date, b.estimated_departure::date) >= td.day
+
+            WHERE r.property_id = $1
+              AND r.is_active = true
+
+            ORDER BY r.id,
+                     CASE b.booking_status
+                        WHEN 'CHECKED_IN' THEN 1
+                        WHEN 'CONFIRMED' THEN 2
+                        WHEN 'NO_SHOW' THEN 3
+                        WHEN 'CHECKED_OUT' THEN 4
+                        ELSE 5
+                     END
+        ),
+
+        summary AS (
+            SELECT
+                COUNT(*) FILTER (WHERE status = 'CHECKED_IN') AS checked_in,
+                COUNT(*) FILTER (WHERE status = 'CONFIRMED')  AS confirmed,
+                COUNT(*) FILTER (WHERE status = 'NO_SHOW')    AS no_show,
+                COUNT(*) FILTER (WHERE status = 'FREE')       AS free,
+                COUNT(*) FILTER (WHERE status = 'DIRTY')      AS dirty
+            FROM room_status
+        ),
+
+        checking_in AS (
+            SELECT json_agg(
+                json_build_object(
+                    'room_no', r.room_no,
+                    'pickup', b.pickup,
+                    'drop', b.drop
+                )
+            )
+            FROM public.room_details rd
+            JOIN public.ref_rooms r ON r.id = rd.ref_room_id
+            JOIN public.bookings b ON b.id = rd.booking_id
+            JOIN target_day td ON true
+            WHERE r.property_id = $1
+              AND b.estimated_arrival::date = td.day
+              AND b.booking_status IN ('CONFIRMED','CHECKED_IN','NO_SHOW')
+        ),
+
+        checking_out AS (
+            SELECT json_agg(
+                json_build_object(
+                    'room_no', r.room_no,
+                    'pickup', b.pickup,
+                    'drop', b.drop
+                )
+            )
+            FROM public.room_details rd
+            JOIN public.ref_rooms r ON r.id = rd.ref_room_id
+            JOIN public.bookings b ON b.id = rd.booking_id
+            JOIN target_day td ON true
+            WHERE r.property_id = $1
+              AND COALESCE(b.actual_departure::date, b.estimated_departure::date) = td.day
+              AND b.booking_status = 'CHECKED_OUT'
+        )
+
+        SELECT
+            (SELECT day FROM target_day) AS date,
+            (SELECT row_to_json(summary) FROM summary) AS summary,
+            (SELECT json_agg(room_status ORDER BY floor_number, room_no) FROM room_status) AS rooms,
+            COALESCE((SELECT * FROM checking_in), '[]'::json) AS checking_in,
+            COALESCE((SELECT * FROM checking_out), '[]'::json) AS checking_out;
+    `;
+
+        const { rows } = await this.#DB.query(query, params);
+        return rows[0];
+    }
+
+    async cancelBookingRoom({
+        bookingId,
+        refRoomId,
+        cancelledBy,
+        comments
+    }) {
+        const client = await this.#DB.connect();
+
+        try {
+            await client.query("BEGIN");
+
+            // lock the room row
+            const { rows } = await client.query(
+                `
+                SELECT id, is_cancelled
+                FROM public.room_details
+                WHERE booking_id = $1
+                AND ref_room_id = $2
+                FOR UPDATE
+                `,
+                [bookingId, refRoomId]
+            );
+
+            if (!rows.length) {
+                throw new Error("Room not found in booking");
+            }
+
+            if (rows[0].is_cancelled) {
+                throw new Error("Room already cancelled");
+            }
+
+            // cancel only this room
+            await client.query(
+                `
+                UPDATE public.room_details
+                SET
+                    is_cancelled = true,
+                    cancelled_on = now(),
+                    cancelled_by = $3
+                WHERE booking_id = $1
+                AND ref_room_id = $2
+                `,
+                [bookingId, refRoomId, cancelledBy]
+            );
+
+            /**
+             * If all rooms are cancelled → cancel booking automatically
+             */
+            const { rows: activeRooms } = await client.query(
+                `
+                SELECT 1
+                FROM public.room_details
+                WHERE booking_id = $1
+                AND is_cancelled = false
+                LIMIT 1
+                `,
+                [bookingId]
+            );
+
+            if (activeRooms.length === 0) {
+                await client.query(
+                    `
+                    UPDATE public.bookings
+                    SET
+                        booking_status = 'CANCELLED',
+                        is_active = false,
+                        comments = COALESCE($2, comments),
+                        updated_by = $3,
+                        updated_on = now()
+                    WHERE id = $1
+                    `,
+                    [bookingId, comments, cancelledBy]
+                );
+            }
+
+            await client.query("COMMIT");
+
+            return {
+                message: "Room cancelled successfully"
+            };
+
+        } catch (err) {
+            await client.query("ROLLBACK");
+            throw err;
+        } finally {
+            client.release();
+        }
+    }
 
 }
 

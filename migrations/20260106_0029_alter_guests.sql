@@ -1,0 +1,3 @@
+ALTER TABLE public.guests
+ALTER COLUMN last_name
+DROP NOT NULL;

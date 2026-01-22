@@ -12,6 +12,8 @@ router.route("/")
 router.route("/user-by-property")
     .get(supabaseAuth, requireRole(roles.OWNER, roles.SUPER_ADMIN), user.getUsersByPropertyAndRoles.bind(user))
 
+router.get("/property/:propertyId", supabaseAuth, requireRole(roles.ALL), user.getUsersByPropertyAndRole.bind(user))
+
 router.route("/me")
     .get(supabaseAuth, user.getMe.bind(user))
 

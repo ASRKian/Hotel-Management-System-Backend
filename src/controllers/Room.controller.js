@@ -26,7 +26,7 @@ class RoomController {
 
     async bulkUpdateRooms(req, res) {
         try {
-            const { updates } = req.body
+            const updates = req.body
             const updatedBy = req.user.user_id
             const rows = await RoomService.bulkUpdateRooms({ updates, updatedBy })
             return res.status(201).json({ message: "Rooms updated successfully", data: rows })
@@ -39,8 +39,8 @@ class RoomController {
     async addRoom(req, res) {
         try {
             const createdBy = req.user.user_id
-            const { propertyId, floorNumber, roomType } = req.body
-            const rows = await RoomService.addRoom({ createdBy, floorNumber, propertyId, roomType })
+            const { propertyId, floorNumber, roomTypeId } = req.body
+            const rows = await RoomService.addRoom({ createdBy, floorNumber, propertyId, roomTypeId })
             return res.status(201).json({ message: "Success", data: rows })
         } catch (error) {
             console.log("🚀 ~ RoomController ~ addRoom ~ error:", error)
@@ -69,6 +69,41 @@ class RoomController {
             return res.status(500).json({ message: "Error fetching data" })
         }
     }
+
+    async getAllRoomTypes(_, res) {
+        try {
+            const data = await RoomService.getAllRoomTypes();
+            res.status(200).json(data);
+        } catch (err) {
+            console.log("🚀 ~ RoomController ~ getAllMasters ~ err:", err)
+            return res.status(500).json({ "message": "Error fetching data" })
+        }
+    };
+
+    async getDailyRoomStatus(req, res) {
+        try {
+            const { propertyId } = req.params
+            const { date } = req.query
+            const data = await RoomService.getDailyRoomStatus({ propertyId, date });
+            res.status(200).json(data);
+        } catch (err) {
+            console.log("🚀 ~ RoomController ~ getDailyRoomStatus ~ err:", err)
+            return res.status(500).json({ "message": "Error fetching data" })
+        }
+    };
+
+    async cancelBookingRoom(req, res) {
+        try {
+            const { bookingId } = req.params
+            const { refRoomId, comments } = req.body
+            const userId = req.user.user_id
+            const data = await RoomService.cancelBookingRoom({ bookingId, cancelledBy: userId, refRoomId, comments });
+            res.status(200).json(data);
+        } catch (err) {
+            console.log("🚀 ~ RoomController ~ cancelBookingRoom ~ err:", err)
+            return res.status(500).json({ "message": "Error cancel room" })
+        }
+    };
 }
 
 export default Object.freeze(new RoomController())

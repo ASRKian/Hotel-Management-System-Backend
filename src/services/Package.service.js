@@ -1,8 +1,11 @@
 import { getDb } from "../../utils/getDb.js";
 
 class PackageService {
+
+    #DB
+
     constructor() {
-        this.db = getDb();
+        this.#DB = getDb();
     }
 
     async createPackage({
@@ -13,7 +16,7 @@ class PackageService {
         createdBy,
         isActive = true
     }) {
-        const { rows } = await this.db.query(
+        const { rows } = await this.#DB.query(
             `
             INSERT INTO public.packages (
                 property_id,
@@ -33,12 +36,105 @@ class PackageService {
         return rows[0];
     }
 
+    async generatePackagesForProperty(propertyId, userId) {
+        const { rows } = await this.#DB.query(`
+        SELECT COUNT(*) AS count
+        FROM ref_packages
+    `);
+
+        if (Number(rows[0].count) === 0) {
+            return {
+                insertedCount: 0,
+                message: "No reference plans found"
+            };
+        }
+
+        const { rowCount } = await this.#DB.query(
+            `
+        INSERT INTO public.packages (
+            property_id,
+            package_name,
+            description,
+            base_price,
+            is_active,
+            system_generated,
+            created_by
+        )
+        SELECT
+            $1 AS property_id,
+            rp.package_name,
+            rp.description,
+            0 AS base_price,
+            true AS is_active,
+            true AS system_generated,
+            $2 AS created_by
+        FROM public.ref_packages rp
+        ON CONFLICT (property_id, LOWER(package_name))
+        DO NOTHING
+        `,
+            [propertyId, userId]
+        );
+
+        return {
+            insertedCount: rowCount
+        };
+    }
+
+    async generatePackagesForAllProperties(userId) {
+        const { rows } = await this.#DB.query(`
+        SELECT COUNT(*) AS count
+        FROM ref_packages
+    `);
+
+        if (Number(rows[0].count) === 0) {
+            return {
+                insertedCount: 0,
+                message: "No reference plans found"
+            };
+        }
+
+        const { rowCount } = await this.#DB.query(
+            `
+        INSERT INTO public.packages (
+            property_id,
+            package_name,
+            description,
+            base_price,
+            is_active,
+            system_generated,
+            created_by
+        )
+        SELECT
+            p.id AS property_id,
+            rp.package_name,
+            rp.description,
+            0 AS base_price,
+            true AS is_active,
+            true AS system_generated,
+            $1 AS created_by
+        FROM public.properties p
+        CROSS JOIN public.ref_packages rp
+        ON CONFLICT (property_id, LOWER(package_name))
+        DO NOTHING
+        `,
+            [userId]
+        );
+
+        return {
+            insertedCount: rowCount
+        };
+    }
+
+
     async getPackagesByProperty(propertyId) {
-        const { rows } = await this.db.query(
+        const { rows } = await this.#DB.query(
             `
             SELECT
                 id,
-                package_name
+                package_name,
+                description,
+                system_generated,
+                base_price
             FROM public.packages
             WHERE property_id = $1
             --AND is_active = true
@@ -51,7 +147,7 @@ class PackageService {
     }
 
     async getPackageById(id) {
-        const { rows } = await this.db.query(
+        const { rows } = await this.#DB.query(
             `
             SELECT *
             FROM public.packages
@@ -65,7 +161,7 @@ class PackageService {
 
     async getPackagesByUser(userId) {
         console.log("🚀 ~ PackageService ~ getPackagesByUser ~ userId:", userId)
-        const { rows } = await this.db.query(
+        const { rows } = await this.#DB.query(
             `
             SELECT
             p.id,
@@ -81,7 +177,6 @@ class PackageService {
 
         return rows
     }
-
 
     async updatePackage({
         id,
@@ -137,7 +232,7 @@ class PackageService {
                         RETURNING *
                         `;
 
-        const { rows } = await this.db.query(query, [id, ...values]);
+        const { rows } = await this.#DB.query(query, [id, ...values]);
 
         if (!rows.length) {
             throw new Error("Package not found");
@@ -146,8 +241,67 @@ class PackageService {
         return rows[0];
     }
 
+    async updatePackagesBulk({ propertyId, packages, userId }) {
+        if (!Array.isArray(packages) || packages.length === 0) {
+            return [];
+        }
+
+        const ids = [];
+        const basePrices = [];
+        const isActives = [];
+
+        for (const p of packages) {
+            if (!p.id) continue;
+
+            ids.push(Number(p.id));
+            basePrices.push(
+                p.base_price !== undefined ? Number(p.base_price) : null
+            );
+            isActives.push(
+                p.is_active !== undefined ? Boolean(p.is_active) : null
+            );
+        }
+
+        if (!ids.length) return [];
+
+        const { rows } = await this.#DB.query(
+            `
+            UPDATE public.packages p
+            SET
+                base_price = COALESCE(v.base_price, p.base_price),
+                is_active  = COALESCE(v.is_active, p.is_active),
+                updated_by = $2,
+                updated_on = NOW()
+            FROM (
+                SELECT
+                    unnest($1::bigint[])   AS id,
+                    unnest($3::numeric[]) AS base_price,
+                    unnest($4::boolean[]) AS is_active
+            ) v
+            WHERE p.id = v.id
+            AND p.property_id = $5
+            RETURNING
+                p.id,
+                p.property_id,
+                p.package_name,
+                p.base_price,
+                p.is_active,
+                p.updated_on
+            `,
+            [
+                ids,        // $1
+                userId,     // $2
+                basePrices, // $3
+                isActives,  // $4
+                propertyId  // $5
+            ]
+        );
+
+        return rows;
+    }
+
     async deactivatePackage(id) {
-        const { rows } = await this.db.query(
+        const { rows } = await this.#DB.query(
             `
             UPDATE public.packages
             SET

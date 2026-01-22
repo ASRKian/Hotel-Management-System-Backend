@@ -82,6 +82,21 @@ class PackageController {
         }
     };
 
+    async updatePackagesBulk(req, res) {
+        try {
+            const propertyId = Number(req.params.propertyId);
+            const userId = req.user.user_id
+            const packages = req.body;
+
+            const pkg = await packageService.updatePackagesBulk({ packages, propertyId, userId });
+
+            return res.json(pkg);
+        } catch (err) {
+            console.error("Update package error:", err);
+            return res.status(500).json({ message: "Failed to update package" });
+        }
+    };
+
     async deactivate(req, res) {
         try {
             const id = Number(req.params.id);
@@ -102,10 +117,21 @@ class PackageController {
         try {
             const userId = req.user.user_id
             const packages = await packageService.getPackagesByUser(userId)
-            return res.json({message: "Success", packages})
+            return res.json({ message: "Success", packages })
         } catch (error) {
             console.log("🚀 ~ PackageController ~ getPackagesByUser ~ error:", error)
             return res.status(500).json({ message: "Error fetching packages" })
+        }
+    }
+
+    async generatePackagesForAllProperties(req, res) {
+        try {
+            const userId = req.user.user_id
+            const count = await packageService.generatePackagesForAllProperties(userId)
+            return res.status(201).json(count)
+        } catch (error) {
+            console.log("🚀 ~ PackageController ~ generatePackagesForAllProperties ~ error:", error)
+            return res.status(500).json({ message: "Error creating packages" })
         }
     }
 }

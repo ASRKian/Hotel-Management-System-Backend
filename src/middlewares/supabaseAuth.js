@@ -13,8 +13,8 @@ export async function supabaseAuth(req, res, next) {
 
         let decoded;
         try {
-            decoded = verifySupabaseJwt(token);
-        } catch {
+            decoded = await verifySupabaseJwt(token);
+        } catch (err) {
             return res.status(401).json({ error: "Invalid or expired token" });
         }
 
