@@ -100,8 +100,9 @@ class PackageController {
     async deactivate(req, res) {
         try {
             const id = Number(req.params.id);
+            const userId = req.user.user_id
 
-            const pkg = await packageService.deactivatePackage(id);
+            const pkg = await packageService.deactivatePackage(id, userId);
 
             return res.json({
                 message: "Package deactivated",

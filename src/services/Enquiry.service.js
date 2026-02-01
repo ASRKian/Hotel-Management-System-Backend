@@ -1,4 +1,5 @@
 import { getDb } from "../../utils/getDb.js";
+import AuditService from "./Audit.service.js";
 
 class EnquiryService {
     #DB;
@@ -138,7 +139,28 @@ class EnquiryService {
         ];
 
         const result = await this.#DB.query(query, values);
-        return result.rows[0];
+
+        const enquiry = result.rows[0];
+
+        await AuditService.log({
+            property_id: enquiry.property_id,
+            event_id: enquiry.id,
+            table_name: "enquiries",
+            event_type: "CREATE",
+            task_name: "Create Enquiry",
+            comments: "New enquiry created",
+            details: JSON.stringify({
+                guest_name: enquiry.guest_name,
+                mobile: enquiry.mobile,
+                enquiry_type: enquiry.enquiry_type,
+                status: enquiry.status,
+                check_in: enquiry.check_in,
+                check_out: enquiry.check_out
+            }),
+            user_id: userId
+        });
+
+        return enquiry;
     }
 
     /**
@@ -180,7 +202,23 @@ class EnquiryService {
             throw new Error("Enquiry not found");
         }
 
-        return result.rows[0];
+        const updated = result.rows[0];
+
+        await AuditService.log({
+            property_id: updated.property_id,
+            event_id: updated.id,
+            table_name: "enquiries",
+            event_type: "UPDATE",
+            task_name: "Update Enquiry",
+            comments: "Enquiry updated",
+            details: JSON.stringify({
+                updated_fields: Object.keys(payload),
+                new_values: payload
+            }),
+            user_id: userId
+        });
+
+        return updated;
     }
 
     /**
@@ -203,7 +241,23 @@ class EnquiryService {
             throw new Error("Enquiry not found");
         }
 
-        return result.rows[0];
+        const deactivated = result.rows[0];
+
+        await AuditService.log({
+            property_id: deactivated.property_id,
+            event_id: deactivated.id,
+            table_name: "enquiries",
+            event_type: "DEACTIVATE",
+            task_name: "Deactivate Enquiry",
+            comments: "Enquiry deactivated",
+            details: JSON.stringify({
+                previous_status: deactivated.status,
+                is_active: false
+            }),
+            user_id: userId
+        });
+
+        return deactivated;
     }
 }
 

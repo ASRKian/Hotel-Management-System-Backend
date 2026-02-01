@@ -16,6 +16,9 @@ router.route("/")
 router.route("/:id")
     .get(supabaseAuth, requireRole(roles.ALL), BookingController.getBookingById.bind(BookingController))
 
+router.route("/:id/today-in-house-bookings")
+    .get(supabaseAuth, requireRole(roles.ALL), BookingController.getTodayInHouseBookingIdsByProperty.bind(BookingController))
+
 router.route("/:id/cancel")
     .patch(supabaseAuth, requireRole(roles.ALL), BookingController.cancelBooking.bind(BookingController))
 

@@ -73,30 +73,50 @@ import { getDb } from "../utils/getDb.js";
                 sort_order: 7,
             },
             {
+                link_name: "Vendors",
+                endpoint: "/vendors",
+                sort_order: 8,
+            },
+            {
                 link_name: "Laundry Pricing",
                 endpoint: "/laundry-pricing",
-                sort_order: 8,
+                sort_order: 9,
             },
             {
                 link_name: "Laundry Orders",
                 endpoint: "/laundry-orders",
-                sort_order: 9,
+                sort_order: 10,
             },
             {
                 link_name: "Enquiries",
                 endpoint: "/enquiries",
-                sort_order: 10,
-            },
-            {
-                link_name: "New Enquiry",
-                endpoint: "/create-enquiry",
                 sort_order: 11,
             },
             // {
-            //     link_name: "Vendors",
-            //     endpoint: "/vendors",
-            //     sort_order: 8,
+            //     link_name: "New Enquiry",
+            //     endpoint: "/create-enquiry",
+            //     sort_order: 12,
             // },
+            {
+                link_name: "Menu Items",
+                endpoint: "/menu-items",
+                sort_order: 13,
+            },
+            {
+                link_name: "Orders",
+                endpoint: "/orders",
+                sort_order: 14,
+            },
+            {
+                link_name: "Tables",
+                endpoint: "/restaurant-tables",
+                sort_order: 15,
+            },
+            {
+                link_name: "Kitchen",
+                endpoint: "/kitchen-inventory",
+                sort_order: 16,
+            },
             // {
             //     link_name: "Settings",
             //     endpoint: "/settings",
@@ -280,26 +300,26 @@ import { getDb } from "../utils/getDb.js";
         console.log("room_categories seeded");
 
         const REF_LAUNDRY_ITEMS = [
-            "Shirt",
-            "T-Shirt",
-            "Trouser",
-            "Jeans",
-            "Bedsheet",
-            "Pillow Cover",
-            "Towel",
-            "Bath Towel",
-            "Hand Towel",
-            "Blanket",
-            "Curtain",
-            "Saree",
-            "Suit (2 Pc)",
-            "Suit (3 Pc)",
-            "Jacket",
-            "Blazer",
-            "Coat",
-            "Sweater",
-            "Scarf",
-            "Uniform"
+            // `"Shirt",
+            // "T-Shirt",
+            // "Trouser",
+            // "Jeans",
+            // "Bedsheet",
+            // "Pillow Cover",
+            // "Towel",
+            // "Bath Towel",
+            // "Hand Towel",
+            // "Blanket",
+            // "Curtain",
+            // "Saree",
+            // "Suit (2 Pc)",
+            // "Suit (3 Pc)",
+            // "Jacket",
+            // "Blazer",
+            // "Coat",
+            // "Sweater",
+            // "Scarf",
+            // "Unif`orm"
         ];
 
         for (const itemName of REF_LAUNDRY_ITEMS) {

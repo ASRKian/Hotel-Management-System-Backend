@@ -145,6 +145,23 @@ class VendorService {
 
         return rows[0];
     }
+
+    async getAllByPropertyId(propertyId) {
+        const query = `
+            select
+                id,
+                name,
+                vendor_type,
+                email_id
+            from public.ref_vendors
+            where property_id = $1
+              and is_active = true
+            order by name;
+        `;
+
+        const { rows } = await this.#DB.query(query, [propertyId]);
+        return rows;
+    }
 }
 
 export default Object.freeze(new VendorService());

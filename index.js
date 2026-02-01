@@ -23,6 +23,11 @@ import propertyBanksRoutes from "./src/routes/propertyBankAccount.routes.js";
 import vendorRoutes from "./src/routes/vendor.routes.js";
 import laundryRoutes from "./src/routes/laundry.routes.js";
 import enquiryRoutes from "./src/routes/enquiry.routes.js";
+import menuMasterRoutes from "./src/routes/menuMaster.routes.js";
+import restaurantOrderRoutes from "./src/routes/restaurantOrder.routes.js";
+import restaurantTablesRoutes from "./src/routes/restaurantTable.routes.js";
+import kitchenInventoryRoutes from "./src/routes/kitchenInventory.routes.js";
+import auditRoutes from "./src/routes/audit.routes.js";
 
 config()
 
@@ -52,6 +57,11 @@ app.use("/property-banks", propertyBanksRoutes)
 app.use("/vendors", vendorRoutes)
 app.use("/laundries", laundryRoutes)
 app.use("/enquiries", enquiryRoutes)
+app.use("/menu", menuMasterRoutes)
+app.use("/orders", restaurantOrderRoutes)
+app.use("/tables", restaurantTablesRoutes)
+app.use("/kitchen", kitchenInventoryRoutes)
+app.use("/audits", auditRoutes)
 
 app.listen(process.env.PORT || 3000, () => {
   console.log(`server is running on: ${process.env.PORT || "Either ENV not loaded or PORT is not defined default port is 3000"}`);

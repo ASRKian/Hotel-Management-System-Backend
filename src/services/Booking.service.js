@@ -1,4 +1,5 @@
 import { getDb } from "../../utils/getDb.js"
+import AuditService from "./Audit.service.js"
 
 class Booking {
 
@@ -38,9 +39,11 @@ class Booking {
             }
         } else {
             if (scope === "upcoming") {
-                conditions.push(`b.estimated_departure >= $${idx}`)
-                params.push(today)
-                idx++
+                // conditions.push(`b.estimated_departure >= $${idx}`)
+                // params.push(today)
+                conditions.push(`b.actual_departure IS NULL`)
+                // params.push("null")
+                // idx++
             } else if (scope === "past") {
                 conditions.push(`b.estimated_departure < $${idx}`)
                 params.push(today)
@@ -160,6 +163,12 @@ class Booking {
 
             COALESCE(paid.total_paid_amount, 0) AS paid_amount,
 
+            /* ============================
+               RESTAURANT AGGREGATES
+            ============================ */
+            COALESCE(ro.restaurant_total_amount, 0) AS restaurant_total_amount,
+            COALESCE(ro.restaurant_paid_amount, 0)  AS restaurant_paid_amount,
+
             COALESCE(
                 json_agg(
                     json_build_object(
@@ -172,29 +181,60 @@ class Booking {
                 '[]'
             ) AS rooms
 
-            FROM public.bookings b
+        FROM public.bookings b
 
-            LEFT JOIN (
-                SELECT
-                    booking_id,
-                    SUM(paid_amount) AS total_paid_amount
-                FROM public.payments
-                WHERE is_active = true
-                GROUP BY booking_id
-            ) paid ON paid.booking_id = b.id
+        /* -------- PAYMENTS -------- */
+        LEFT JOIN (
+            SELECT
+                booking_id,
+                SUM(paid_amount) AS total_paid_amount
+            FROM public.payments
+            WHERE is_active = true
+            GROUP BY booking_id
+        ) paid ON paid.booking_id = b.id
 
-           JOIN public.room_details rd
-                ON rd.booking_id = b.id
-                AND rd.is_cancelled = false
+        /* -------- RESTAURANT ORDERS -------- */
+        LEFT JOIN (
+            SELECT
+                booking_id,
 
-            LEFT JOIN public.ref_rooms rr
-                ON rr.id = rd.ref_room_id
+                -- total of non-cancelled orders
+                SUM(
+                    CASE 
+                        WHEN order_status != 'Cancelled' 
+                        THEN total_amount 
+                        ELSE 0 
+                    END
+                ) AS restaurant_total_amount,
 
-            WHERE b.id = $1
-            GROUP BY
-                b.id,
-                paid.total_paid_amount
-            `,
+                -- total of paid orders
+                SUM(
+                    CASE 
+                        WHEN payment_status = 'Paid' 
+                        THEN total_amount 
+                        ELSE 0 
+                    END
+                ) AS restaurant_paid_amount
+
+            FROM public.restaurant_orders
+            GROUP BY booking_id
+        ) ro ON ro.booking_id = b.id
+
+        /* -------- ROOMS -------- */
+        JOIN public.room_details rd
+            ON rd.booking_id = b.id
+            AND rd.is_cancelled = false
+
+        LEFT JOIN public.ref_rooms rr
+            ON rr.id = rd.ref_room_id
+
+        WHERE b.id = $1
+        GROUP BY
+            b.id,
+            paid.total_paid_amount,
+            ro.restaurant_total_amount,
+            ro.restaurant_paid_amount
+        `,
             [Number(bookingId)]
         );
 
@@ -358,6 +398,42 @@ class Booking {
             }
 
             await client.query("COMMIT");
+            try {
+
+
+                const roomIds = rooms.map(r => r.ref_room_id);
+                console.log("🚀 ~ Booking ~ createBooking ~ roomIds:", roomIds)
+
+                const query = `
+                            SELECT id, room_no
+                            FROM public.ref_rooms
+                            WHERE id = ANY($1::bigint[])
+                            `;
+
+                const { rows } = await this.#DB.query(query, [roomIds]);
+
+                const roomNo = rows.map(r => r.room_no);
+
+                await AuditService.log({
+                    property_id,
+                    event_id: booking.id,
+                    table_name: "bookings",
+                    event_type: "CREATE",
+                    task_name: "Create Booking",
+                    comments: "New booking created",
+                    details: JSON.stringify({
+                        booking_type,
+                        booking_status,
+                        estimated_arrival,
+                        estimated_departure,
+                        rooms: roomNo
+                    }),
+                    user_id: created_by
+                });
+            } catch (error) {
+                console.log("🚀 ~ Booking ~ createBooking ~ error:", error)
+            }
+
             return booking;
 
         } catch (err) {
@@ -427,6 +503,24 @@ class Booking {
 
             await client.query("COMMIT")
 
+            try {
+                await AuditService.log({
+                    property_id: updatedRows[0].property_id,
+                    event_id: bookingId,
+                    table_name: "bookings",
+                    event_type: "CANCEL",
+                    task_name: "Cancel Booking",
+                    comments: comments || "Booking cancelled",
+                    details: JSON.stringify({
+                        cancellation_fee: cancellationFee,
+                        previous_status: booking.booking_status
+                    }),
+                    user_id: cancelledBy
+                });
+            } catch (error) {
+
+            }
+
             return {
                 message: "Booking cancelled successfully",
                 booking: updatedRows[0]
@@ -451,9 +545,12 @@ class Booking {
         try {
             await client.query("BEGIN");
 
+            /* ------------------------------------------------ */
+            /* 🔒 Lock booking row */
+            /* ------------------------------------------------ */
             const { rows } = await client.query(
                 `
-            SELECT id, booking_status
+            SELECT id, booking_status, property_id
             FROM public.bookings
             WHERE id = $1
             FOR UPDATE
@@ -464,6 +561,66 @@ class Booking {
             if (!rows.length) {
                 throw new Error("Booking not found");
             }
+
+            const currentStatus = rows[0].booking_status;
+
+            /* ------------------------------------------------ */
+            /* 🚫 RULE 1: Prevent CHECKOUT without CHECKIN */
+            /* ------------------------------------------------ */
+            if (status === "CHECKED_OUT" && currentStatus !== "CHECKED_IN") {
+                throw {
+                    code: "INVALID_CHECKOUT",
+                    message: "Cannot checkout a booking that was never checked in",
+                    booking_id: bookingId,
+                    current_status: currentStatus
+                };
+            }
+
+            /* ------------------------------------------------ */
+            /* 🔍 RULE 2: Room availability validation (CHECKED_IN) */
+            /* ------------------------------------------------ */
+            if (status === "CHECKED_IN") {
+
+                const { rows: conflicts } = await client.query(
+                    `
+                SELECT 
+                    r.id              AS room_id,
+                    r.room_no,
+                    rd2.booking_id    AS active_booking_id,
+                    b2.booking_status AS active_booking_status
+                FROM public.room_details rd
+                JOIN public.ref_rooms r 
+                    ON r.id = rd.ref_room_id
+
+                /* other active bookings using same rooms */
+                LEFT JOIN public.room_details rd2
+                    ON rd2.ref_room_id = r.id
+                   AND rd2.booking_id != $1
+
+                LEFT JOIN public.bookings b2
+                    ON b2.id = rd2.booking_id
+                   AND b2.is_active = true
+                   AND b2.booking_status IN ('CONFIRMED','CHECKED_IN')
+
+                WHERE rd.booking_id = $1
+                  AND b2.id IS NOT NULL
+                `,
+                    [bookingId]
+                );
+
+                if (conflicts.length) {
+                    throw {
+                        code: "ROOM_NOT_AVAILABLE",
+                        message: "One or more rooms are not available for check-in",
+                        booking_id: bookingId,
+                        conflicted_rooms: conflicts
+                    };
+                }
+            }
+
+            /* ------------------------------------------------ */
+            /* ✅ Status update */
+            /* ------------------------------------------------ */
 
             let extraUpdates = ``;
 
@@ -503,10 +660,9 @@ class Booking {
                 ]
             );
 
-            /**
-             *  IMPORTANT PART
-             * When booking is CHECKED_OUT → mark all related rooms as dirty
-             */
+            /* ------------------------------------------------ */
+            /* 🧹 Dirty rooms on checkout */
+            /* ------------------------------------------------ */
             if (status === 'CHECKED_OUT') {
                 await client.query(
                     `
@@ -525,19 +681,58 @@ class Booking {
 
             await client.query("COMMIT");
 
+            /* ------------------------------------------------ */
+            /* 🧾 Audit */
+            /* ------------------------------------------------ */
+            try {
+                await AuditService.log({
+                    property_id: rows[0].property_id,
+                    event_id: bookingId,
+                    table_name: "bookings",
+                    event_type: "STATUS_CHANGE",
+                    task_name: "Update Booking Status",
+                    comments: `Status changed to ${status}`,
+                    details: JSON.stringify({
+                        old_status: currentStatus,
+                        new_status: status
+                    }),
+                    user_id: updatedBy
+                });
+            } catch { }
+
             return {
                 message: "Booking status updated successfully",
                 booking: updatedRows[0]
             };
 
         } catch (err) {
+            console.log("🚀 ~ Booking ~ updateBookingStatus ~ err:", err);
             await client.query("ROLLBACK");
+
+            if (err?.code === "ROOM_NOT_AVAILABLE" || err?.code === "INVALID_CHECKOUT") {
+                throw err;
+            }
+
             throw err;
         } finally {
             client.release();
         }
     }
 
+    async getTodayInHouseBookingIdsByProperty(propertyId) {
+        const query = `
+            select id
+            from public.bookings
+            where property_id = $1
+              and is_active = true
+              and booking_status not in ('CANCELLED', 'NO_SHOW')
+              and estimated_arrival < date_trunc('day', now()) + interval '1 day'
+              and estimated_departure > date_trunc('day', now());
+        `;
+
+        const { rows } = await this.#DB.query(query, [propertyId]);
+        return rows.map(r => r.id);
+    }
 
 }
 

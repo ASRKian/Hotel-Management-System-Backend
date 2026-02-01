@@ -53,6 +53,28 @@ class StaffOnboardingService {
                 userId: createdBy,
             })
 
+            /* ---------- VISA SAVE ---------- */
+            if (payload.nationality === "foreigner") {
+                await client.query(
+                    `
+                    INSERT INTO public.visa_details (
+                        visa_number,
+                        issued_date,
+                        expiry_date,
+                        staff_id
+                    )
+                    VALUES ($1, $2, $3, $4)
+                    `,
+                    [
+                        payload.visa_number,
+                        payload.visa_issue_date,
+                        payload.visa_expiry_date,
+                        staff.id
+                    ]
+                );
+            }
+
+
             const adminRoleCheck = await client.query(
                 `
                 SELECT 1
@@ -151,6 +173,62 @@ class StaffOnboardingService {
                 updatedBy,
                 client
             )
+
+            /* ---------- VISA UPDATE ---------- */
+            if (payload.nationality === "foreigner") {
+
+                const { rowCount } = await client.query(
+                    `SELECT 1 FROM public.visa_details WHERE staff_id = $1`,
+                    [staffId]
+                );
+
+                if (rowCount) {
+                    // update existing
+                    await client.query(
+                        `
+                        UPDATE public.visa_details
+                        SET
+                            visa_number = $1,
+                            issued_date = $2,
+                            expiry_date = $3
+                        WHERE staff_id = $4
+                        `,
+                        [
+                            payload.visa_number,
+                            payload.visa_issue_date,
+                            payload.visa_expiry_date,
+                            staffId
+                        ]
+                    );
+                } else {
+                    // insert new
+                    await client.query(
+                        `
+                        INSERT INTO public.visa_details (
+                            visa_number,
+                            issued_date,
+                            expiry_date,
+                            staff_id
+                        )
+                        VALUES ($1, $2, $3, $4)
+                        `,
+                        [
+                            payload.visa_number,
+                            payload.visa_issue_date,
+                            payload.visa_expiry_date,
+                            staffId
+                        ]
+                    );
+                }
+
+            } else {
+                // if nationality changed from foreigner → indian, clean visa
+                await client.query(
+                    `DELETE FROM public.visa_details WHERE staff_id = $1`,
+                    [staffId]
+                );
+            }
+
 
             if (Array.isArray(payload.role_ids)) {
                 const { rowCount } = await client.query(

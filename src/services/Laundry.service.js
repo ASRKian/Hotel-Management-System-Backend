@@ -1,4 +1,5 @@
 import { getDb } from "../../utils/getDb.js";
+import AuditService from "./Audit.service.js";
 
 class LaundryService {
 
@@ -47,6 +48,24 @@ class LaundryService {
             userId
         ]);
 
+        await AuditService.log({
+            property_id: propertyId,
+            event_id: rows[0].id,
+            table_name: "laundry",
+            event_type: "CREATE",
+            task_name: "Create Laundry Item",
+            comments: "Laundry item created",
+            details: JSON.stringify({
+                laundry_id: rows[0].id,
+                item_name: itemName,
+                description: description ?? null,
+                item_rate: itemRate ?? 0,
+                system_generated: false
+            }),
+            user_id: userId
+        });
+
+
         return rows[0];
     }
 
@@ -87,6 +106,25 @@ class LaundryService {
             rates,
             userId
         ]);
+
+        // await AuditService.log({
+        //     property_id: rows[0]?.property_id ?? null,
+        //     event_id: null,
+        //     table_name: "laundry",
+        //     event_type: "BULK_UPDATE",
+        //     task_name: "Bulk Update Laundry Items",
+        //     comments: "Laundry items updated in bulk",
+        //     details: JSON.stringify({
+        //         updated_ids: ids,
+        //         updates: updates.map(u => ({
+        //             id: u.id,
+        //             item_name: u.itemName ?? null,
+        //             description: u.description ?? null,
+        //             item_rate: u.itemRate ?? null
+        //         }))
+        //     }),
+        //     user_id: userId
+        // });
 
         return rows;
     }

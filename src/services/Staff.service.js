@@ -159,7 +159,25 @@ class Staff {
                 s.created_on,
                 s.updated_by,
                 s.updated_on,
+                s.nationality,
+                s.country,
                 u.property_id,
+
+                /* ---------- VISA FIELDS (FLAT) ---------- */
+                CASE 
+                    WHEN s.nationality = 'foreigner' THEN vd.visa_number
+                    ELSE NULL
+                END AS visa_number,
+
+                CASE 
+                    WHEN s.nationality = 'foreigner' THEN vd.issued_date
+                    ELSE NULL
+                END AS visa_issue_date,
+
+                CASE 
+                    WHEN s.nationality = 'foreigner' THEN vd.expiry_date
+                    ELSE NULL
+                END AS visa_expiry_date,
 
                 COALESCE(
                     jsonb_agg(
@@ -172,14 +190,30 @@ class Staff {
                 ) AS roles
 
             FROM public.staff s
-            LEFT JOIN public.users u ON u.id = s.user_id
-            LEFT JOIN public.user_roles ur ON ur.user_id = u.id
-            LEFT JOIN public.roles r ON r.id = ur.role_id
+            LEFT JOIN public.users u 
+                ON u.id = s.user_id
+
+            LEFT JOIN public.user_roles ur 
+                ON ur.user_id = u.id
+
+            LEFT JOIN public.roles r 
+                ON r.id = ur.role_id
+
             ${this.#addressJoin()}
+
+            /* visa join */
+            LEFT JOIN public.visa_details vd
+                ON vd.staff_id = s.id
+
             WHERE s.id = $1
+
             GROUP BY
-                s.id, u.property_id,
-                a.address_line_1
+                s.id,
+                u.property_id,
+                a.address_line_1,
+                vd.visa_number,
+                vd.issued_date,
+                vd.expiry_date
             `,
             [id]
         );
@@ -238,13 +272,15 @@ class Staff {
                     emergency_contact_2,
                     emergency_contact_relation_2,
                     emergency_contact_name,
-                    emergency_contact_name_2
+                    emergency_contact_name_2,
+                    nationality,
+                    country
                 )
                 VALUES (
                     $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,
                     $11,$12,$13,$14,$15,$16,$17,$18,
                     $19,$20,$21,$22,$23,$24,$25,$26,
-                    $27,$28,$29,$30,$31
+                    $27,$28,$29,$30,$31,$32,$33
                 )
                 RETURNING id
                 `,
@@ -279,7 +315,9 @@ class Staff {
                     staffPayload.emergency_contact_2,
                     staffPayload.emergency_contact_relation_2,
                     staffPayload.emergency_contact_name,
-                    staffPayload.emergency_contact_name_2
+                    staffPayload.emergency_contact_name_2,
+                    staffPayload.nationality,
+                    staffPayload.country,
                 ]
             );
 
@@ -323,7 +361,7 @@ class Staff {
             "leave_days", "dob", "shift_pattern", "status",
             "user_id", "emergency_contact_relation",
             "emergency_contact_2", "emergency_contact_relation_2",
-            "emergency_contact_name", "emergency_contact_name_2"
+            "emergency_contact_name", "emergency_contact_name_2", "nationality", "country"
         ];
 
         const fields = [];
@@ -339,16 +377,16 @@ class Staff {
 
         if (files?.image) {
             fields.push(`image = $${idx++}`);
-            values.push(files.image.buffer);
+            values.push(files.image[0].buffer);
             fields.push(`image_mime = $${idx++}`);
-            values.push(files.image.mimetype);
+            values.push(files.image[0].mimetype);
         }
 
         if (files?.id_proof) {
             fields.push(`id_proof = $${idx++}`);
-            values.push(files.id_proof.buffer);
+            values.push(files.id_proof[0].buffer);
             fields.push(`id_proof_mime = $${idx++}`);
-            values.push(files.id_proof.mimetype);
+            values.push(files.id_proof[0].mimetype);
         }
 
         fields.push(`updated_by = $${idx++}`);
@@ -392,6 +430,7 @@ class Staff {
             `SELECT image, image_mime FROM public.staff WHERE id = $1`,
             [id]
         );
+        console.log("🚀 ~ Staff ~ getImage ~ rows:", rows)
         return rows[0];
     }
 

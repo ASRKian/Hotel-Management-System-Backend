@@ -19,8 +19,13 @@ class PropertyBankAccount {
         try {
             await client.query('BEGIN');
 
+            let inserted = 0;
+            let updated = 0;
+            let deleted = 0;
+
+            /* ---------- DELETE ---------- */
             if (deletedBankIds.length) {
-                await client.query(
+                const res = await client.query(
                     `
                 DELETE FROM property_bank_accounts
                 WHERE id = ANY($1::bigint[])
@@ -28,11 +33,14 @@ class PropertyBankAccount {
                 `,
                     [deletedBankIds, propertyId]
                 );
+
+                deleted = res.rowCount;
             }
 
+            /* ---------- UPSERT ---------- */
             for (const bank of accounts) {
                 if (bank.id) {
-                    await client.query(
+                    const res = await client.query(
                         `
                     UPDATE property_bank_accounts
                     SET
@@ -55,8 +63,9 @@ class PropertyBankAccount {
                             propertyId
                         ]
                     );
+
+                    updated += res.rowCount;
                 } else {
-                    // ✅ INSERT (NO id)
                     await client.query(
                         `
                     INSERT INTO property_bank_accounts (
@@ -79,10 +88,36 @@ class PropertyBankAccount {
                             userId
                         ]
                     );
+
+                    inserted++;
                 }
             }
 
             await client.query('COMMIT');
+
+            try {
+                /* ---------- AUDIT ---------- */
+                await AuditService.log({
+                    property_id: propertyId,
+                    event_id: propertyId,
+                    table_name: "property_bank_accounts",
+                    event_type: "UPSERT",
+                    task_name: "Upsert Property Bank Accounts",
+                    comments: "Property bank accounts modified",
+                    details: JSON.stringify({
+                        property_id: propertyId,
+                        inserted,
+                        updated,
+                        deleted,
+                        total_received: accounts.length,
+                        deleted_ids: deletedBankIds
+                    }),
+                    user_id: userId
+                });
+            } catch (error) {
+
+            }
+
         } catch (e) {
             await client.query('ROLLBACK');
             throw e;

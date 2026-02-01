@@ -1,4 +1,5 @@
 import { getDb } from "../../utils/getDb.js";
+import AuditService from "./Audit.service.js";
 
 class LaundryOrderService {
 
@@ -94,6 +95,30 @@ class LaundryOrderService {
             userId
         ]);
 
+        await AuditService.log({
+            property_id: propertyId,
+            event_id: rows[0].id,
+            table_name: "laundry_orders",
+            event_type: "CREATE",
+            task_name: "Create Laundry Order",
+            comments: "Laundry order created",
+            details: JSON.stringify({
+                laundry_order_id: rows[0].id,
+                laundry_id: laundryId,
+                item_name,
+                laundry_type: laundryType,
+                item_count: qty,
+                item_rate: rate,
+                amount,
+                room_id: roomId ?? null,
+                booking_id: bookingId ?? null,
+                vendor_id: vendorId ?? null,
+                pickup_date: pickupDate ?? null,
+                delivery_date: deliveryDate ?? null
+            }),
+            user_id: userId
+        });
+
         return rows[0];
     }
 
@@ -139,6 +164,20 @@ class LaundryOrderService {
                 totalPages
             }
         };
+    }
+
+    async getByBookingId(bookingId) {
+        const query = `
+                    SELECT *
+                    FROM public.laundry_orders
+                    WHERE booking_id = $1
+                        AND status = 'active'
+                    ORDER BY created_on DESC
+                    `;
+
+        const { rows } = await this.#DB.query(query, [bookingId]);
+
+        return rows;
     }
 
     async updateOrder({
@@ -192,6 +231,24 @@ class LaundryOrderService {
         if (!rowCount) {
             throw new Error("Laundry order cannot be updated");
         }
+
+        await AuditService.log({
+            property_id: rows[0].property_id,
+            event_id: rows[0].id,
+            table_name: "laundry_orders",
+            event_type: "UPDATE",
+            task_name: "Update Laundry Order",
+            comments: "Laundry order updated",
+            details: JSON.stringify({
+                laundry_order_id: rows[0].id,
+                item_count: rows[0].item_count,
+                amount: rows[0].amount,
+                laundry_status: rows[0].laundry_status,
+                pickup_date: rows[0].pickup_date,
+                delivery_date: rows[0].delivery_date
+            }),
+            user_id: userId
+        });
 
         return rows[0];
     }

@@ -24,6 +24,17 @@ class RoomController {
         }
     }
 
+    async getRoomsByBooking(req, res) {
+        try {
+            const { bookingId } = req.params
+            const rooms = await RoomService.getRoomNumbersByBookingId(bookingId)
+            return res.json(rooms)
+        } catch (error) {
+            console.log("🚀 ~ RoomController ~ getRoomsByProperty ~ error:", error)
+            return res.status(500).json({ message: "Error fetching rooms" })
+        }
+    }
+
     async bulkUpdateRooms(req, res) {
         try {
             const updates = req.body

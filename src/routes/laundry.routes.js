@@ -13,6 +13,7 @@ router.put("/", supabaseAuth, requireRole(roles.ALL), LaundryController.bulkUpda
 
 router.post("/orders", supabaseAuth, requireRole(roles.ALL), LaundryOrderController.create.bind(LaundryOrderController));
 router.get("/orders/property/:propertyId", supabaseAuth, requireRole(roles.ALL), LaundryOrderController.getByProperty.bind(LaundryOrderController));
+router.get("/orders/booking/:bookingId", supabaseAuth, requireRole(roles.ALL), LaundryOrderController.getByBooking.bind(LaundryOrderController));
 router.put("/orders/:id", supabaseAuth, requireRole(roles.ALL), LaundryOrderController.update.bind(LaundryOrderController));
 
 export default router;

@@ -69,6 +69,21 @@ class VehicleService {
                         [...values, vehicle.id, bookingId]
                     )
 
+                    await AuditService.log({
+                        property_id,
+                        event_id: vehicle.id,
+                        table_name: "vehicles",
+                        event_type: "UPDATE",
+                        task_name: "Update Vehicle",
+                        comments: "Vehicle updated",
+                        details: JSON.stringify({
+                            booking_id: bookingId,
+                            vehicle_id: vehicle.id,
+                            updates: vehicle
+                        }),
+                        user_id: userId
+                    });
+
                 }
                 /* ------------------------------------
                    INSERT FLOW (no id)
@@ -97,6 +112,21 @@ class VehicleService {
                             userId
                         ]
                     )
+
+                    // await AuditService.log({
+                    //     property_id,
+                    //     event_id: null,
+                    //     table_name: "vehicles",
+                    //     event_type: "CREATE",
+                    //     task_name: "Add Vehicle",
+                    //     comments: "Vehicle added to booking",
+                    //     details: JSON.stringify({
+                    //         booking_id: bookingId,
+                    //         vehicle
+                    //     }),
+                    //     user_id: userId
+                    // });
+
                 }
             }
 

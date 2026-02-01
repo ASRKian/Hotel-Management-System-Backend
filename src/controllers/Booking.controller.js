@@ -12,6 +12,17 @@ class Booking {
         }
     }
 
+    async getTodayInHouseBookingIdsByProperty(req, res) {
+        try {
+            const propertyId = req.params.id
+            const bookings = await BookingService.getTodayInHouseBookingIdsByProperty(propertyId)
+            return res.json(bookings)
+        } catch (error) {
+            console.log("🚀 ~ Booking ~ getTodayInHouseBookingIdsByProperty ~ error:", error)
+            return res.status(500).json({ message: "Error fetching bookings" })
+        }
+    }
+
     async getBookingById(req, res) {
         try {
             const { id } = req.params
@@ -74,13 +85,30 @@ class Booking {
             return res.status(200).json(result)
 
         } catch (err) {
-            return res.status(400).json({
-                message: err.message || "Failed to update booking status"
-            })
+
+            if (err?.code === "ROOM_NOT_AVAILABLE") {
+                return res.status(409).json({
+                    code: "ROOM_NOT_AVAILABLE",
+                    message: err.message,
+                    booking_id: err.booking_id,
+                    conflicted_rooms: err.conflicted_rooms
+                });
+            }
+
+            if (err?.code === "INVALID_CHECKOUT") {
+                return res.status(400).json({
+                    code: "INVALID_CHECKOUT",
+                    message: err.message,
+                    booking_id: err.booking_id,
+                    current_status: err.current_status
+                });
+            }
+
+            return res.status(500).json({
+                message: "Failed to update booking status"
+            });
         }
     }
-
-
 }
 
 export default Object.freeze(new Booking())

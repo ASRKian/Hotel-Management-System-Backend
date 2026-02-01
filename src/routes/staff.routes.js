@@ -9,10 +9,10 @@ const router = express.Router();
 
 router.get("/by-property/:id", supabaseAuth, requireRole(roles.SUPER_ADMIN, roles.ADMIN, roles.OWNER), StaffController.getAllByPropertyId.bind(StaffController));
 
-router.get("/:id/image", supabaseAuth, StaffController.getImage.bind(StaffController)
+router.get("/:id/image", StaffController.getImage.bind(StaffController)
 );
 
-router.get("/:id/id-proof", supabaseAuth, StaffController.getIdProof.bind(StaffController));
+router.get("/:id/id-proof", StaffController.getIdProof.bind(StaffController));
 
 router.route("/")
     .get(supabaseAuth, StaffController.getAll.bind(StaffController))

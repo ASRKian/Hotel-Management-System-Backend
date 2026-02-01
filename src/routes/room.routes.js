@@ -24,6 +24,8 @@ router.get("/room-types", RoomController.getAllRoomTypes.bind(RoomController))
 
 router.get("/status/property/:propertyId", supabaseAuth, requireRole(roles.ALL), RoomController.getDailyRoomStatus.bind(RoomController))
 
+router.get("/booking/:bookingId", supabaseAuth, requireRole(roles.ALL), RoomController.getRoomsByBooking.bind(RoomController))
+
 router.patch("/booking/:bookingId/cancel", supabaseAuth, requireRole(roles.ALL), RoomController.cancelBookingRoom.bind(RoomController))
 
 export default router

@@ -1,4 +1,5 @@
 import { getDb } from "../../utils/getDb.js";
+import AuditService from "./Audit.service.js";
 
 class GuestsService {
     #DB;
@@ -81,12 +82,13 @@ class GuestsService {
                         emergency_contact,
                         emergency_contact_name,
                         is_active,
-                        created_by
+                        created_by,
+                        country
                     )
                     VALUES (
                         $1,$2,$3,$4,$5,$6,$7,$8,$9,
                         $10,$11,$12,$13,$14,$15,$16,
-                        $17,$18,$19,$20,true,$21
+                        $17,$18,$19,$20,true,$21,$22
                     )
                     RETURNING id
                     `,
@@ -111,7 +113,8 @@ class GuestsService {
                         guest.id_proof_mime ?? null,
                         guest.emergency_contact ?? null,
                         guest.emergency_contact_name ?? null,
-                        createdBy
+                        createdBy,
+                        guest.country ?? null
                     ]
                 );
 
@@ -127,9 +130,59 @@ class GuestsService {
                         [rows[0].id, guest.address, createdBy]
                     );
                 }
+
+                const guestId = rows[0].id;
+
+                if (guest.nationality === "foreigner") {
+                    if (!guest.visa_number || !guest.visa_issue_date || !guest.visa_expiry_date) {
+                        throw new Error("Visa details required for foreign guest");
+                    }
+
+                    await client.query(
+                        `
+                    INSERT INTO public.visa_details (
+                        visa_number,
+                        issued_date,
+                        expiry_date,
+                        guest_id
+                    )
+                    VALUES ($1,$2,$3,$4)
+                    `,
+                        [
+                            guest.visa_number,
+                            guest.visa_issue_date,
+                            guest.visa_expiry_date,
+                            guestId
+                        ]
+                    );
+                }
             }
 
             await client.query("COMMIT");
+
+            try {
+                await AuditService.log({
+                    property_id,
+                    event_id: bookingId,
+                    table_name: "guests",
+                    event_type: "BULK_CREATE",
+                    task_name: "Add Guests to Booking",
+                    comments: "Guests added to booking",
+                    details: JSON.stringify({
+                        booking_id: bookingId,
+                        total_guests_added: guests.length,
+                        guests: guests.map(g => ({
+                            first_name: g.first_name,
+                            last_name: g.last_name,
+                            phone: g.phone,
+                            email: g.email
+                        }))
+                    }),
+                    user_id: createdBy
+                });
+            } catch (error) {
+
+            }
 
             return {
                 message: "Guests added successfully",
@@ -168,6 +221,7 @@ class GuestsService {
                 g.email,
                 g.guest_type,
                 g.nationality,
+                g.country,
                 g.id_type,
                 g.id_number,
                 (g.id_proof IS NOT NULL) AS has_id_proof,
@@ -176,12 +230,20 @@ class GuestsService {
                 g.emergency_contact_name,
                 g.is_active,
                 g.created_on,
-                g.updated_on
+                g.updated_on,
+
+                vd.visa_number,
+                vd.issued_date  AS visa_issue_date,
+                vd.expiry_date  AS visa_expiry_date
+
             FROM public.guests g
             ${this.#addressJoin()}
+            LEFT JOIN public.visa_details vd
+                ON vd.guest_id = g.id
             WHERE g.booking_id = $1
-              AND g.is_active = true
+            AND g.is_active = true
             ORDER BY g.created_on
+
             `,
             [Number(bookingId)]
         );
@@ -219,6 +281,7 @@ class GuestsService {
             if (payload.guest_type !== undefined) set("guest_type", payload.guest_type);
             if (payload.nationality !== undefined) set("nationality", payload.nationality);
             if (payload.is_active !== undefined) set("is_active", payload.is_active);
+            if (payload.country !== undefined) set("country", payload.country)
 
             if (payload.dob !== undefined) {
                 const age = payload.dob
@@ -266,7 +329,59 @@ class GuestsService {
                 );
             }
 
+            if (payload.nationality === "foreigner") {
+                if (!payload.visa_number || !payload.visa_issue_date || !payload.visa_expiry_date) {
+                    throw new Error("Visa details required for foreign guest");
+                }
+
+                await client.query(
+                    `
+                    INSERT INTO public.visa_details (
+                        visa_number, issued_date, expiry_date, guest_id
+                    )
+                    VALUES ($1,$2,$3,$4)
+                    ON CONFLICT (guest_id) DO UPDATE SET
+                        visa_number = EXCLUDED.visa_number,
+                        issued_date = EXCLUDED.issued_date,
+                        expiry_date = EXCLUDED.expiry_date
+                    `,
+                    [
+                        payload.visa_number,
+                        payload.visa_issue_date,
+                        payload.visa_expiry_date,
+                        guestId
+                    ]
+                );
+            } else {
+                /* auto-remove visa if nationality changed */
+                await client.query(
+                    `DELETE FROM public.visa_details WHERE guest_id = $1`,
+                    [guestId]
+                );
+            }
+
+
             await client.query("COMMIT");
+
+            try {
+                // await AuditService.log({
+                //     property_id: null,
+                //     event_id: bookingId,
+                //     table_name: "guests",
+                //     event_type: "BULK_UPDATE",
+                //     task_name: "Bulk Update Guests",
+                //     comments: "Guests updated in bulk",
+                //     details: JSON.stringify({
+                //         booking_id: bookingId,
+                //         total_guests: guests.length,
+                //         updated_guest_ids: guests.map(g => g.id)
+                //     }),
+                //     user_id: updatedBy
+                // });
+
+            } catch (error) {
+
+            }
 
             return { message: "Guest updated successfully" };
 
@@ -326,6 +441,7 @@ class GuestsService {
                 if (guest.middle_name !== undefined) set("middle_name", guest.middle_name?.trim() ?? null)
                 if (guest.last_name !== undefined) set("last_name", guest.last_name?.trim())
                 if (guest.gender !== undefined) set("gender", guest.gender)
+                if (guest.country !== undefined) set("country", guest.country)
 
                 /* ---------- DOB + AGE ---------- */
                 if (guest.dob !== undefined) {
@@ -396,6 +512,34 @@ class GuestsService {
                         [guest.id, guest.address, updatedBy]
                     )
                 }
+
+                if (guest.nationality === "foreigner") {
+                    await client.query(
+                        `
+                        INSERT INTO public.visa_details (
+                            visa_number, issued_date, expiry_date, guest_id
+                        )
+                        VALUES ($1,$2,$3,$4)
+                        ON CONFLICT (guest_id) DO UPDATE SET
+                            visa_number = EXCLUDED.visa_number,
+                            issued_date = EXCLUDED.issued_date,
+                            expiry_date = EXCLUDED.expiry_date
+                        `,
+                        [
+                            guest.visa_number,
+                            guest.visa_issue_date,
+                            guest.visa_expiry_date,
+                            guest.id
+                        ]
+                    );
+                } else {
+                    await client.query(
+                        `DELETE FROM public.visa_details WHERE guest_id = $1`,
+                        [guest.id]
+                    );
+                }
+
+
             }
 
             await client.query("COMMIT")
@@ -491,6 +635,7 @@ class GuestsService {
                     if (guest.emergency_contact !== undefined) set("emergency_contact", guest.emergency_contact)
                     if (guest.emergency_contact_name !== undefined)
                         set("emergency_contact_name", guest.emergency_contact_name)
+                    if (guest.country !== undefined) set("country", guest.country)
 
                     if (idProofBuffer) {
                         set("id_proof", idProofBuffer)
@@ -511,6 +656,34 @@ class GuestsService {
                             [...values, guest.id, bookingId]
                         )
                     }
+
+                    if (guest.nationality === "foreigner") {
+                        await client.query(
+                            `
+                        INSERT INTO public.visa_details (
+                            visa_number, issued_date, expiry_date, guest_id
+                        )
+                        VALUES ($1,$2,$3,$4)
+                        ON CONFLICT (guest_id) DO UPDATE SET
+                            visa_number = EXCLUDED.visa_number,
+                            issued_date = EXCLUDED.issued_date,
+                            expiry_date = EXCLUDED.expiry_date
+                        `,
+                            [
+                                guest.visa_number,
+                                guest.visa_issue_date,
+                                guest.visa_expiry_date,
+                                guest.id
+                            ]
+                        );
+                    } else {
+                        await client.query(
+                            `DELETE FROM public.visa_details WHERE guest_id = $1`,
+                            [guest.id]
+                        );
+                    }
+
+
                 } else {
                     /* ---------- INSERT ---------- */
                     const { rows } = await client.query(
@@ -536,7 +709,8 @@ class GuestsService {
                             emergency_contact,
                             emergency_contact_name,
                             is_active,
-                            created_by
+                            created_by,
+                            country
                         )
                         SELECT
                             b.id,                 -- booking_id
@@ -559,7 +733,8 @@ class GuestsService {
                             $16,                  -- emergency_contact
                             $17,                  -- emergency_contact_name
                             true,                 -- is_active
-                            $18                   -- created_by
+                            $18,                  -- created_by
+                            $20                   -- country 
                         FROM public.bookings b
                         WHERE b.id = $19
                         RETURNING id
@@ -583,12 +758,36 @@ class GuestsService {
                             guest.emergency_contact ?? null,
                             guest.emergency_contact_name ?? null,
                             createdBy,
-                            bookingId
+                            bookingId,
+                            guest.country ?? null
                         ]
                     );
 
-
                     guestId = rows[0].id
+
+                    if (guest.nationality === "foreigner") {
+                        await client.query(
+                            `
+                        INSERT INTO public.visa_details (
+                            visa_number, issued_date, expiry_date, guest_id
+                        )
+                        VALUES ($1,$2,$3,$4)
+                        `,
+                            [
+                                guest.visa_number,
+                                guest.visa_issue_date,
+                                guest.visa_expiry_date,
+                                guestId
+                            ]
+                        );
+                    } else {
+                        await client.query(
+                            `DELETE FROM public.visa_details WHERE guest_id = $1`,
+                            [guestId]
+                        );
+                    }
+
+
                 }
 
                 /* ---------- ADDRESS UPSERT (BOTH CASES) ---------- */
@@ -631,6 +830,31 @@ class GuestsService {
             }
 
             await client.query("COMMIT")
+            try {
+                // await AuditService.log({
+                //     property_id: null,
+                //     event_id: bookingId,
+                //     table_name: "guests",
+                //     event_type: "UPSERT",
+                //     task_name: "Upsert Guests by Booking",
+                //     comments: "Guests upserted (create/update/remove)",
+                //     details: JSON.stringify({
+                //         booking_id: bookingId,
+                //         created_or_updated: guests.map(g => ({
+                //             id: g.id || null,
+                //             first_name: g.first_name,
+                //             last_name: g.last_name
+                //         })),
+                //         removed_guest_ids: removedGuestIds,
+                //         update_adult: updateAdult,
+                //         adult_count: adult
+                //     }),
+                //     user_id: updatedBy ?? createdBy
+                // });
+
+            } catch (error) {
+
+            }
             return { message: "Guests saved successfully" }
 
         } catch (err) {

@@ -12,6 +12,16 @@ class VendorController {
         }
     }
 
+    async getAllByPropertyId(req, res, next) {
+        try {
+            const { propertyId } = req.params;
+            const data = await VendorService.getAllByPropertyId(propertyId);
+            res.json(data);
+        } catch (err) {
+            next(err);
+        }
+    }
+
     async create(req, res, next) {
         try {
             const userId = req.user.user_id;

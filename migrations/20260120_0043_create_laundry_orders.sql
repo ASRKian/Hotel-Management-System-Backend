@@ -20,7 +20,7 @@ create table
         created_on timestamptz default now (),
         updated_by uuid,
         updated_on timestamptz,
-        constraint fk_laundry_room foreign key (room_id) references public.ref_rooms (id) on delete set null,
+        -- constraint fk_laundry_room foreign key (room_id) references public.ref_rooms (id) on delete set null,
         constraint fk_laundry_booking foreign key (booking_id) references public.bookings (id) on delete cascade,
         constraint fk_laundry_property foreign key (property_id) references public.properties (id) on delete cascade,
         constraint fk_laundry_created_by foreign key (created_by) references public.users (id) on delete set null,
@@ -35,3 +35,6 @@ create table
             or amount >= 0
         )
     );
+
+ALTER TABLE public.laundry_orders
+DROP CONSTRAINT IF EXISTS fk_laundry_room;

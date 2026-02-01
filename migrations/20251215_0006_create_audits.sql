@@ -7,7 +7,7 @@ create table
         event_type varchar(50) not null,
         task_name varchar(150),
         comments text,
-        details varchar(500),
+        details text,
         user_id uuid,
         created_on timestamptz default now (),
         updated_on timestamptz,

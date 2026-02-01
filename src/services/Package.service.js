@@ -1,4 +1,5 @@
 import { getDb } from "../../utils/getDb.js";
+import AuditService from "./Audit.service.js";
 
 class PackageService {
 
@@ -32,6 +33,22 @@ class PackageService {
             `,
             [propertyId, packageName, description, basePrice, isActive, createdBy]
         );
+
+        await AuditService.log({
+            property_id: propertyId,
+            event_id: rows[0].id,
+            table_name: "packages",
+            event_type: "CREATE",
+            task_name: "Create Package",
+            comments: "Package created",
+            details: JSON.stringify({
+                package_id: rows[0].id,
+                package_name: packageName,
+                base_price: basePrice,
+                is_active: isActive
+            }),
+            user_id: createdBy
+        });
 
         return rows[0];
     }
@@ -238,6 +255,22 @@ class PackageService {
             throw new Error("Package not found");
         }
 
+        await AuditService.log({
+            property_id: rows[0].property_id,
+            event_id: rows[0].id,
+            table_name: "packages",
+            event_type: "UPDATE",
+            task_name: "Update Package",
+            comments: "Package updated",
+            details: JSON.stringify({
+                package_id: rows[0].id,
+                package_name: rows[0].package_name,
+                base_price: rows[0].base_price,
+                is_active: rows[0].is_active
+            }),
+            user_id: updatedBy
+        });
+
         return rows[0];
     }
 
@@ -300,21 +333,41 @@ class PackageService {
         return rows;
     }
 
-    async deactivatePackage(id) {
-        const { rows } = await this.#DB.query(
+    async deactivatePackage(id, userId) {
+        const { rows, rowCount } = await this.#DB.query(
             `
-            UPDATE public.packages
-            SET
-                is_active = false,
-                updated_on = now()
-            WHERE id = $1
-            RETURNING *
-            `,
-            [id]
+        UPDATE public.packages
+        SET
+            is_active = false,
+            updated_on = now(),
+            updated_by = $2
+        WHERE id = $1
+        RETURNING id, property_id, package_name;
+        `,
+            [id, userId]
         );
 
-        return rows[0];
+        if (rowCount > 0) {
+            await AuditService.log({
+                property_id: rows[0].property_id,
+                event_id: rows[0].id,
+                table_name: "packages",
+                event_type: "DEACTIVATE",
+                task_name: "Deactivate Package",
+                comments: "Package deactivated",
+                details: JSON.stringify({
+                    package_id: rows[0].id,
+                    package_name: rows[0].package_name
+                }),
+                user_id: userId
+            });
+
+            return rows[0];
+        }
+
+        return null;
     }
+
 }
 
 export default Object.freeze(new PackageService);

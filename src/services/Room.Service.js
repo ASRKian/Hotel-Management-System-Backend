@@ -1,4 +1,5 @@
 import { getDb } from "../../utils/getDb.js";
+import AuditService from "./Audit.service.js";
 
 class RoomService {
 
@@ -138,6 +139,31 @@ class RoomService {
             [roomId]
         );
         return rows[0];
+    }
+
+    /**
+   * Get room numbers by booking ID
+   * @param {bigint} bookingId
+   */
+    async getRoomNumbersByBookingId(bookingId) {
+        if (!bookingId) {
+            throw new Error("bookingId is required");
+        }
+
+        const query = `
+            SELECT
+                rd.ref_room_id,
+                r.room_no
+            FROM public.room_details rd
+            JOIN public.ref_rooms r
+                ON r.id = rd.ref_room_id
+            WHERE rd.booking_id = $1
+              AND rd.is_active = true
+            ORDER BY r.room_no
+        `;
+
+        const { rows } = await this.#DB.query(query, [bookingId]);
+        return rows;
     }
 
     async bulkUpdateRooms({ updates, updatedBy }) {
@@ -665,127 +691,289 @@ class RoomService {
         };
     }
 
-    async getDailyRoomStatus({
-        propertyId,
-        date = null, // defaults to today
-    }) {
-        const params = [propertyId, date];
+    // async getDailyRoomStatus({
+    //     propertyId,
+    //     date = null, // defaults to today
+    // }) {
+    //     const params = [propertyId, date];
+
+    //     const query = `
+    //     WITH target_day AS (
+    //         SELECT COALESCE($2::date, CURRENT_DATE) AS day
+    //     ),
+
+    //     room_status AS (
+    //         SELECT DISTINCT ON (r.id)
+    //             r.id AS ref_room_id,
+    //             r.room_no,
+    //             r.floor_number,
+    //             r.dirty,
+
+    //             -- room type info
+    //             rtr.room_category_name,
+    //             rtr.bed_type_name,
+    //             rtr.ac_type_name,
+
+    //             b.booking_status,
+    //             b.pickup,
+    //             b.drop,
+
+    //             CASE
+    //                 WHEN b.booking_status IN ('CONFIRMED', 'CHECKED_IN', 'NO_SHOW')
+    //                     AND b.estimated_arrival::date <= td.day
+    //                     AND COALESCE(b.actual_departure::date, b.estimated_departure::date) > td.day
+    //                     THEN b.booking_status
+
+    //                 WHEN b.booking_status = 'CHECKED_OUT'
+    //                     THEN CASE
+    //                         WHEN r.dirty = true THEN 'DIRTY'
+    //                         ELSE 'FREE'
+    //                     END
+
+    //                 ELSE 'FREE'
+    //             END AS status
+
+    //         FROM public.ref_rooms r
+    //         CROSS JOIN target_day td
+
+    //         LEFT JOIN public.room_type_rates rtr
+    //             ON rtr.id = r.room_type_id
+
+    //         LEFT JOIN public.room_details rd
+    //             ON rd.ref_room_id = r.id
+    //             AND rd.is_cancelled = false
+
+    //         LEFT JOIN public.bookings b
+    //             ON b.id = rd.booking_id
+    //             AND b.booking_status IN (
+    //                 'CONFIRMED',
+    //                 'CHECKED_IN',
+    //                 'CHECKED_OUT',
+    //                 'NO_SHOW'
+    //             )
+    //             AND b.estimated_arrival::date <= td.day
+    //             AND COALESCE(b.actual_departure::date, b.estimated_departure::date) >= td.day
+
+    //         WHERE r.property_id = $1
+    //         AND r.is_active = true
+
+    //         ORDER BY r.id,
+    //                 CASE b.booking_status
+    //                     WHEN 'CHECKED_IN' THEN 1
+    //                     WHEN 'CONFIRMED' THEN 2
+    //                     WHEN 'NO_SHOW' THEN 3
+    //                     WHEN 'CHECKED_OUT' THEN 4
+    //                     ELSE 5
+    //                 END
+    //     ),
+
+    //     summary AS (
+    //         SELECT
+    //             COUNT(*) FILTER (WHERE status = 'CHECKED_IN') AS checked_in,
+    //             COUNT(*) FILTER (WHERE status = 'CONFIRMED')  AS confirmed,
+    //             COUNT(*) FILTER (WHERE status = 'NO_SHOW')    AS no_show,
+    //             COUNT(*) FILTER (WHERE status = 'FREE')       AS free,
+    //             COUNT(*) FILTER (WHERE status = 'DIRTY')      AS dirty
+    //         FROM room_status
+    //     ),
+
+    //     checking_in AS (
+    //         SELECT json_agg(
+    //             json_build_object(
+    //                 'room_no', r.room_no,
+    //                 'room_category', rtr.room_category_name,
+    //                 'bed_type', rtr.bed_type_name,
+    //                 'ac_type', rtr.ac_type_name,
+    //                 'pickup', b.pickup,
+    //                 'drop', b.drop
+    //             )
+    //         )
+    //         FROM public.room_details rd
+    //         JOIN public.ref_rooms r ON r.id = rd.ref_room_id
+    //         LEFT JOIN public.room_type_rates rtr ON rtr.id = r.room_type_id
+    //         JOIN public.bookings b ON b.id = rd.booking_id
+    //         JOIN target_day td ON true
+    //         WHERE r.property_id = $1
+    //         AND b.estimated_arrival::date = td.day
+    //         AND b.booking_status IN ('CONFIRMED','CHECKED_IN','NO_SHOW')
+    //     ),
+
+    //     checking_out AS (
+    //         SELECT json_agg(
+    //             json_build_object(
+    //                 'room_no', r.room_no,
+    //                 'room_category', rtr.room_category_name,
+    //                 'bed_type', rtr.bed_type_name,
+    //                 'ac_type', rtr.ac_type_name,
+    //                 'pickup', b.pickup,
+    //                 'drop', b.drop
+    //             )
+    //         )
+    //         FROM public.room_details rd
+    //         JOIN public.ref_rooms r ON r.id = rd.ref_room_id
+    //         LEFT JOIN public.room_type_rates rtr ON rtr.id = r.room_type_id
+    //         JOIN public.bookings b ON b.id = rd.booking_id
+    //         JOIN target_day td ON true
+    //         WHERE r.property_id = $1
+    //         AND COALESCE(b.actual_departure::date, b.estimated_departure::date) = td.day
+    //         AND b.booking_status = 'CHECKED_OUT'
+    //     )
+
+    //     SELECT
+    //         (SELECT day FROM target_day) AS date,
+    //         (SELECT row_to_json(summary) FROM summary) AS summary,
+    //         (SELECT json_agg(room_status ORDER BY floor_number, room_no) FROM room_status) AS rooms,
+    //         COALESCE((SELECT * FROM checking_in), '[]'::json) AS checking_in,
+    //         COALESCE((SELECT * FROM checking_out), '[]'::json) AS checking_out;
+    //     `;
+
+    //     const { rows } = await this.#DB.query(query, params);
+    //     return rows[0];
+    // }
+
+    async getDailyRoomStatus({ propertyId, date }) {
+        const targetDate = date || new Date().toISOString().split("T")[0];
 
         const query = `
-        WITH target_day AS (
-            SELECT COALESCE($2::date, CURRENT_DATE) AS day
-        ),
+            WITH target_day AS (
+                SELECT $2::date AS day
+            ),
 
-        room_status AS (
-            SELECT DISTINCT ON (r.id)
-                r.id AS ref_room_id,
-                r.room_no,
-                r.floor_number,
-                r.dirty,
+            active_rooms AS (
+                SELECT
+                    r.id AS ref_room_id,
+                    r.room_no,
+                    r.floor_number,
+                    r.dirty,
+                    r.property_id,
+                    r.room_type_id,
+                    r.is_active
+                FROM ref_rooms r
+                WHERE r.property_id = $1
+                AND r.is_active = true
+            ),
 
-                b.booking_status,
-                b.pickup,
-                b.drop,
+            room_meta AS (
+                SELECT
+                    ar.*, 
+                    rtr.room_category_name,
+                    rtr.bed_type_name,
+                    rtr.ac_type_name
+                FROM active_rooms ar
+                LEFT JOIN room_type_rates rtr
+                ON rtr.id = ar.room_type_id
+            ),
 
-                CASE
-                    WHEN b.booking_status IN ('CONFIRMED', 'CHECKED_IN', 'NO_SHOW')
-                         AND b.estimated_arrival::date <= td.day
-                         AND COALESCE(b.actual_departure::date, b.estimated_departure::date) > td.day
-                        THEN b.booking_status
-
-                    WHEN b.booking_status = 'CHECKED_OUT'
-                        THEN CASE
-                            WHEN r.dirty = true THEN 'DIRTY'
-                            ELSE 'FREE'
-                        END
-
-                    ELSE 'FREE'
-                END AS status
-
-            FROM public.ref_rooms r
-            CROSS JOIN target_day td
-
-            LEFT JOIN public.room_details rd
-                ON rd.ref_room_id = r.id
-                AND rd.is_cancelled = false
-
-            LEFT JOIN public.bookings b
-                ON b.id = rd.booking_id
-                AND b.booking_status IN (
-                    'CONFIRMED',
-                    'CHECKED_IN',
-                    'CHECKED_OUT',
-                    'NO_SHOW'
+            booking_overlap AS (
+                SELECT
+                    rd.ref_room_id,
+                    b.id AS booking_id,
+                    b.booking_status,
+                    b.estimated_arrival,
+                    COALESCE(b.actual_departure, b.estimated_departure) AS effective_departure,
+                    b.actual_arrival,
+                    b.actual_departure,
+                    b.pickup,
+                    b.drop,
+                    rd.is_cancelled
+                FROM room_details rd
+                JOIN bookings b ON b.id = rd.booking_id
+                JOIN target_day td ON (
+                    td.day >= b.estimated_arrival::date
+                    AND td.day < COALESCE(b.actual_departure, b.estimated_departure)::date
                 )
-                AND b.estimated_arrival::date <= td.day
-                AND COALESCE(b.actual_departure::date, b.estimated_departure::date) >= td.day
+                WHERE rd.is_cancelled = false
+            ),
 
-            WHERE r.property_id = $1
-              AND r.is_active = true
+            resolved AS (
+                SELECT
+                    rm.ref_room_id,
+                    rm.room_no,
+                    rm.floor_number,
+                    rm.dirty,
+                    rm.room_category_name,
+                    rm.bed_type_name,
+                    rm.ac_type_name,
+                    bo.booking_status,
+                    bo.pickup,
+                    bo.drop,
+                    CASE
+                        WHEN bo.booking_status = 'CHECKED_IN' THEN 'CHECKED_IN'
+                        WHEN bo.booking_status = 'CHECKED_OUT' AND rm.dirty = true THEN 'DIRTY'
+                        WHEN bo.booking_status = 'CHECKED_OUT' AND rm.dirty = false THEN 'FREE'
+                        WHEN bo.booking_status IN ('BOOKED','CONFIRMED') THEN 'BOOKED'
+                        WHEN bo.booking_id IS NULL THEN 'FREE'
+                        ELSE 'FREE'
+                    END AS status
+                FROM room_meta rm
+                LEFT JOIN booking_overlap bo
+                ON bo.ref_room_id = rm.ref_room_id
+            ),
 
-            ORDER BY r.id,
-                     CASE b.booking_status
-                        WHEN 'CHECKED_IN' THEN 1
-                        WHEN 'CONFIRMED' THEN 2
-                        WHEN 'NO_SHOW' THEN 3
-                        WHEN 'CHECKED_OUT' THEN 4
-                        ELSE 5
-                     END
-        ),
+            checking_in AS (
+                SELECT DISTINCT
+                    rm.room_no,
+                    rm.room_category_name,
+                    rm.bed_type_name,
+                    rm.ac_type_name,
+                    bo.pickup,
+                    bo.drop
+                FROM room_meta rm
+                JOIN booking_overlap bo ON bo.ref_room_id = rm.ref_room_id
+                JOIN target_day td ON true
+                WHERE bo.booking_status IN ('BOOKED','CONFIRMED')
+                AND bo.actual_arrival IS NULL
+                AND bo.estimated_arrival::date = td.day
+            ),
 
-        summary AS (
+            checking_out AS (
+                SELECT DISTINCT
+                    rm.room_no,
+                    rm.room_category_name,
+                    rm.bed_type_name,
+                    rm.ac_type_name,
+                    bo.pickup,
+                    bo.drop
+                FROM room_meta rm
+                JOIN booking_overlap bo ON bo.ref_room_id = rm.ref_room_id
+                JOIN target_day td ON true
+                WHERE bo.booking_status = 'CHECKED_IN'
+                AND bo.actual_departure IS NULL
+                AND COALESCE(bo.actual_departure, bo.effective_departure)::date = td.day
+            )
+
             SELECT
-                COUNT(*) FILTER (WHERE status = 'CHECKED_IN') AS checked_in,
-                COUNT(*) FILTER (WHERE status = 'CONFIRMED')  AS confirmed,
-                COUNT(*) FILTER (WHERE status = 'NO_SHOW')    AS no_show,
-                COUNT(*) FILTER (WHERE status = 'FREE')       AS free,
-                COUNT(*) FILTER (WHERE status = 'DIRTY')      AS dirty
-            FROM room_status
-        ),
-
-        checking_in AS (
-            SELECT json_agg(
-                json_build_object(
-                    'room_no', r.room_no,
-                    'pickup', b.pickup,
-                    'drop', b.drop
-                )
-            )
-            FROM public.room_details rd
-            JOIN public.ref_rooms r ON r.id = rd.ref_room_id
-            JOIN public.bookings b ON b.id = rd.booking_id
-            JOIN target_day td ON true
-            WHERE r.property_id = $1
-              AND b.estimated_arrival::date = td.day
-              AND b.booking_status IN ('CONFIRMED','CHECKED_IN','NO_SHOW')
-        ),
-
-        checking_out AS (
-            SELECT json_agg(
-                json_build_object(
-                    'room_no', r.room_no,
-                    'pickup', b.pickup,
-                    'drop', b.drop
-                )
-            )
-            FROM public.room_details rd
-            JOIN public.ref_rooms r ON r.id = rd.ref_room_id
-            JOIN public.bookings b ON b.id = rd.booking_id
-            JOIN target_day td ON true
-            WHERE r.property_id = $1
-              AND COALESCE(b.actual_departure::date, b.estimated_departure::date) = td.day
-              AND b.booking_status = 'CHECKED_OUT'
-        )
-
-        SELECT
             (SELECT day FROM target_day) AS date,
-            (SELECT row_to_json(summary) FROM summary) AS summary,
-            (SELECT json_agg(room_status ORDER BY floor_number, room_no) FROM room_status) AS rooms,
-            COALESCE((SELECT * FROM checking_in), '[]'::json) AS checking_in,
-            COALESCE((SELECT * FROM checking_out), '[]'::json) AS checking_out;
-    `;
+            jsonb_build_object(
+                'checked_in', COUNT(*) FILTER (WHERE status = 'CHECKED_IN'),
+                'confirmed', COUNT(*) FILTER (WHERE status = 'BOOKED'),
+                'no_show', 0,
+                'free', COUNT(*) FILTER (WHERE status = 'FREE'),
+                'dirty', COUNT(*) FILTER (WHERE status = 'DIRTY')
+            ) AS summary,
 
-        const { rows } = await this.#DB.query(query, params);
+            jsonb_agg(jsonb_build_object(
+                'ref_room_id', ref_room_id,
+                'room_no', room_no,
+                'floor_number', floor_number,
+                'dirty', dirty,
+                'room_category_name', room_category_name,
+                'bed_type_name', bed_type_name,
+                'ac_type_name', ac_type_name,
+                'booking_status', booking_status,
+                'pickup', pickup,
+                'drop', drop,
+                'status', status
+            ) ORDER BY floor_number, room_no) AS rooms,
+
+            (SELECT jsonb_agg(ci) FROM checking_in ci) AS checking_in,
+            (SELECT jsonb_agg(co) FROM checking_out co) AS checking_out
+
+            FROM resolved;
+            `;
+
+        const { rows } = await this.#DB.query(query, [propertyId, targetDate]);
+
         return rows[0];
     }
 
@@ -865,6 +1053,35 @@ class RoomService {
             }
 
             await client.query("COMMIT");
+
+            try {
+                const query = `
+                            SELECT property_id
+                            FROM public.bookings
+                            WHERE id = $1
+                            `;
+
+                const result = await db.query(query, [bookingId]);
+                const propertyId = result.rows[0]?.property_id;
+
+                await AuditService.log({
+                    property_id: propertyId,
+                    event_id: bookingId,
+                    table_name: "room_details",
+                    event_type: "CANCEL",
+                    task_name: "Cancel Booking Room",
+                    comments: "Room cancelled from booking",
+                    details: JSON.stringify({
+                        booking_id: bookingId,
+                        ref_room_id: refRoomId,
+                        comments
+                    }),
+                    user_id: cancelledBy
+                });
+
+            } catch (error) {
+
+            }
 
             return {
                 message: "Room cancelled successfully"

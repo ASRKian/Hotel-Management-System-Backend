@@ -1,6 +1,7 @@
 import { generatePropertyRoomTypeRates } from "../../utils/generatePropertyRoomTypeRates.js";
 import { getDb } from "../../utils/getDb.js";
 import { roles } from "../../utils/roles.js";
+import AuditService from "./Audit.service.js";
 import LaundrySetupServiceService from "./LaundrySetupService.service.js";
 
 class Property {
@@ -368,8 +369,34 @@ class Property {
 
             await client.query("COMMIT");
 
-            await generatePropertyRoomTypeRates(client, propertyId, userId);
-            await LaundrySetupServiceService.initPropertyLaundry({ propertyId, userId })
+            try {
+                await generatePropertyRoomTypeRates(client, propertyId, userId);
+                await LaundrySetupServiceService.initPropertyLaundry({ propertyId, userId })
+
+                /* ---------- AUDIT ---------- */
+                await AuditService.log({
+                    property_id: propertyId,
+                    event_id: propertyId,
+                    table_name: "properties",
+                    event_type: "CREATE",
+                    task_name: "Create Property",
+                    comments: "New property created",
+                    details: JSON.stringify({
+                        property_id: propertyId,
+                        brand_name,
+                        city,
+                        state,
+                        country,
+                        owner_user_id: ownerUserId,
+                        phone,
+                        email,
+                        status
+                    }),
+                    user_id: userId
+                });
+            } catch (error) {
+
+            }
 
             return { id: propertyId };
 
@@ -521,6 +548,27 @@ class Property {
             }
 
             await client.query("COMMIT");
+
+            try {
+                /* ---------- AUDIT ---------- */
+                await AuditService.log({
+                    property_id: id,
+                    event_id: id,
+                    table_name: "properties",
+                    event_type: "UPDATE",
+                    task_name: "Update Property",
+                    comments: "Property updated",
+                    details: JSON.stringify({
+                        property_id: id,
+                        updated_fields: Object.keys(payload),
+                        user_id: userId
+                    }),
+                    user_id: userId
+                });
+
+            } catch (error) {
+
+            }
             return { id };
 
         } catch (err) {

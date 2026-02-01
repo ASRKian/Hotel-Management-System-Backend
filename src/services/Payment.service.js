@@ -1,4 +1,5 @@
 import { getDb } from "../../utils/getDb.js";
+import AuditService from "./Audit.service.js";
 
 class PaymentsService {
 
@@ -190,7 +191,27 @@ class PaymentsService {
             ]
         );
 
-        return rows[0];
+        const payment = rows[0];
+
+        await AuditService.log({
+            property_id,
+            event_id: payment.id,
+            table_name: "payments",
+            event_type: "CREATE",
+            task_name: "Create Payment",
+            comments: "Payment recorded",
+            details: JSON.stringify({
+                payment_id: payment.id,
+                booking_id,
+                amount: paid_amount,
+                method: payment_method,
+                type: payment_type,
+                status: payment_status
+            }),
+            user_id: userId
+        });
+
+        return payment;
     }
 
     /* Update payment */
@@ -227,7 +248,27 @@ class PaymentsService {
             ]
         );
 
-        return rows[0];
+        const payment = rows[0];
+
+        await AuditService.log({
+            property_id: payment.property_id,
+            event_id: payment.id,
+            table_name: "payments",
+            event_type: "UPDATE",
+            task_name: "Update Payment",
+            comments: "Payment updated",
+            details: JSON.stringify({
+                payment_id: payment.id,
+                booking_id: payment.booking_id,
+                amount: payment.paid_amount,
+                method: payment.payment_method,
+                type: payment.payment_type,
+                status: payment.payment_status
+            }),
+            user_id: updated_by
+        });
+
+        return payment;
     }
 }
 
