@@ -7,11 +7,11 @@ import roleSidebarLink from '../controllers/RoleSidebarLink.controller.js'
 const router = express.Router()
 
 router.route("/")
-    .post(supabaseAuth, requireRole(roles.SUPER_ADMIN), roleSidebarLink.upsertPermission.bind(roleSidebarLink))
+    .post(supabaseAuth, requireRole(roles.ALL), roleSidebarLink.upsertPermission.bind(roleSidebarLink))
     .get(supabaseAuth, roleSidebarLink.getPermissionsByUserId.bind(roleSidebarLink))
 
 router.route("/:id")
-    .get(supabaseAuth, requireRole(roles.SUPER_ADMIN), roleSidebarLink.getPermissionsByRole.bind(roleSidebarLink))
-    .delete(supabaseAuth, requireRole(roles.SUPER_ADMIN), roleSidebarLink.deletePermission.bind(roleSidebarLink))
+    .get(supabaseAuth, requireRole(roles.ALL), roleSidebarLink.getPermissionsByRole.bind(roleSidebarLink))
+    .delete(supabaseAuth, requireRole(roles.ALL), roleSidebarLink.deletePermission.bind(roleSidebarLink))
 
 export default router
